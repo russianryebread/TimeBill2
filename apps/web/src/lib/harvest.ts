@@ -18,6 +18,11 @@ export type HarvestRow = {
   hours: number;         // decimal hours
   billable: boolean;
   rateCents: number;     // 0 if missing
+  // Optional real timestamps. Harvest's detailed export is date-only, so
+  // these are undefined for Harvest rows; Toggl rows populate both and the
+  // importer prefers them over 09:00 + cumulative synthesis.
+  startISO?: string;
+  endISO?: string;
 };
 
 export type ParseResult = {
@@ -26,39 +31,7 @@ export type ParseResult = {
   headerMap: Record<string, number>;
 };
 
-/**
- * Minimal RFC-4180-ish CSV row splitter. Handles quoted fields containing
- * commas and escaped quotes (""). Sufficient for Harvest exports.
- */
-function splitCsvRow(line: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
-}
+import { splitCsvRow } from './csv';
 
 function parseHarvestDate(raw: string): string | null {
   const s = raw.trim();

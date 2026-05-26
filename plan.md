@@ -453,3 +453,145 @@ link manually.
   3. Opens a confirm modal pre-filled with the client's email; user can
      override and add a CC. Submit calls `/send-email`.
   4. Status banner reflects the response.
+
+---
+
+## Phase 8 (in progress) — Tauri menu-bar scaffold rebuild
+
+The Tauri shell was regenerated to template state. Phase 8 reshapes
+it into the menu-bar timer app we actually want, on top of the
+existing SvelteKit static build. No native timer logic yet — this is
+the chassis other phases will hang features off.
+
+### 8.1 Two-window setup
+
+`apps/desktop/src-tauri/tauri.conf.json` declares two windows that both
+load the same frontend bundle (`apps/web/build` in production,
+`http://127.0.0.1:5173` in dev):
+
+- **`main`** — 1100x720, titled `TimeBill`, hidden at launch. Opened
+  from the tray menu's "Open TimeBill" item.
+- **`menubar`** — 380x520 at url `/menubar`. Decorations off,
+  transparent, always on top, skip taskbar, hidden + unfocused at
+  launch. The route exists at
+  `apps/web/src/routes/menubar/+page.svelte`.
+
+Bundle id `me.hoshor.timebill`, version `0.0.1`, targets
+`["app", "dmg"]`, macOS min `11.0`, icons reuse the duck-clock logo
+already in `src-tauri/icons/`.
+
+### 8.2 Tray + global shortcut (Rust side)
+
+`src-tauri/src/lib.rs`:
+
+- `TrayIconBuilder` with the default window icon as a template image so
+  macOS auto-tints it for light/dark menu bars.
+- Right-click menu: `Open TimeBill` (shows + focuses `main`), `Quit`
+  (Cmd+Q, `app.exit(0)`).
+- Left-click on the tray icon toggles the `menubar` window's
+  visibility — `is_visible()` → `hide()` else `show()` + `set_focus()`.
+  Uses `show_menu_on_left_click(false)` so left-click doesn't open the
+  right-click menu.
+- `tauri-plugin-global-shortcut` registers `Cmd+Opt+T`. For now its
+  handler reuses the same toggle. The intended long-term behavior is
+  start/stop the most recent timer via a Rust→JS event — that lands
+  with the bridge in 8.4.
+
+`Cargo.toml` deps: `tauri` (features `tray-icon`, `image-png`),
+`tauri-plugin-global-shortcut = "2"`, plus `serde` / `serde_json`.
+
+### 8.3 Capabilities
+
+`src-tauri/capabilities/default.json` applies to both windows and
+allows the subset of `core:window` permissions the toggle/show logic
+needs (`allow-show`, `allow-hide`, `allow-set-focus`,
+`allow-is-visible`, `allow-set-position`, `allow-set-size`,
+`allow-close`) plus `core:tray:default` and `core:webview:default`.
+
+### 8.4 Deferred
+
+- **Tauri↔Svelte bridge.** Once we have it, Cmd+Opt+T emits a
+  `timer-toggle` event the Svelte side listens for; the menu bar
+  window stops being the hotkey's job.
+- **Idle detection.** macOS input idle watcher → prompt to discard /
+  keep idle stretch mid-timer.
+- **Notifications.**
+- **Code signing + notarization** (Developer ID + notarytool).
+- **GitHub Releases updater** via `tauri-plugin-updater`.
+
+### 8.5 How to run it
+
+From repo root: `npm run dev:desktop` runs `tauri dev`, which spawns
+Vite on 5173 and opens the Mac app pointed at it. PocketBase still
+needs to run separately (`npm run dev:pb`). `npm run build:desktop`
+produces the `.app` + `.dmg` under
+`apps/desktop/src-tauri/target/release/bundle/`.
+
+---
+
+## Phase 9 (in progress) — Toggl Track import
+
+Second competitor importer, sharing the `/settings/import` UI shell with
+the Harvest one. Same dedup-by-name semantics; parser is swapped based on
+the CSV header. (Numbered 9 because Phase 8 is the Tauri scaffold above.)
+
+### 9.1 Format auto-detection
+
+- New helper `detectImportFormat(text)` in `apps/web/src/lib/toggl.ts`
+  inspects the first CSV row.
+  - `Start time` / `End time` (or `Start date` + `Duration`) → Toggl.
+  - `Date` + `Hours` → Harvest.
+  - Both or neither → `'unknown'`; the UI shows a Harvest/Toggl dropdown
+    and re-parses on selection.
+- The preview screen shows a chip "Detected: Harvest" or
+  "Detected: Toggl Track" so the user can confirm the right parser ran.
+
+### 9.2 Shared CSV helper
+
+- The RFC-4180-ish row splitter that lived inside `harvest.ts` moved to
+  `apps/web/src/lib/csv.ts` as `splitCsvRow(line)`. Both parsers import
+  it, so we don't carry two copies.
+
+### 9.3 Toggl Track parser (`apps/web/src/lib/toggl.ts`)
+
+Handles Toggl's "Detailed report" CSV export. Columns we care about
+(case-insensitive):
+
+```
+User, Email, Client, Project, Task, Description, Billable,
+Start date, Start time, End date, End time, Duration,
+Tags, Amount (USD), Rate
+```
+
+- `parseTogglCsv(text)` returns `{ rows, errors, headerMap }`. Row shape
+  is the existing `HarvestRow` (so `buildPreview` works unchanged) plus
+  required `startISO` / `endISO` strings — Toggl gives real timestamps,
+  so we plumb them through instead of synthesizing.
+- `Billable` is `Yes` / `No`.
+- `Duration` is `HH:MM:SS` (with `HH:MM` and decimal fallbacks).
+- Rate derivation order: explicit `Rate` column → `Amount (USD) / hours`
+  if rate is missing but amount is present → `0`.
+- **Client required.** Toggl allows projects without clients; TimeBill
+  does not. Rows with empty `Client` are skipped and surfaced in the
+  parse errors with: *"Row has no Client — TimeBill requires every
+  project to have a client. Set one in Toggl and re-export."*
+
+### 9.4 Insertion path
+
+- **Toggl path:** uses each row's `startISO` / `endISO` verbatim when
+  creating `time_entries`. No 09:00 synthesis.
+- **Harvest path:** unchanged (groups by date, starts at 09:00, advances
+  per row).
+- New clients, projects (with rate seeded from the first row's
+  rate/derived rate), and activity types are still deduped by name, same
+  as Harvest.
+
+### 9.5 Sharp edges noticed in Toggl's export
+
+- Toggl allows clientless projects → skip + report, don't guess.
+- `Duration` is the source of truth in Toggl's UI, but `Amount` is the
+  *displayed* total; for derived rates we trust `Amount / hours`. Beware
+  rounding when both are populated and disagree.
+- `Start time` / `End time` are local-time strings with no timezone in
+  the CSV — we insert them as naive ISO local strings and let the rest
+  of the app treat them like every other local-time entry.
