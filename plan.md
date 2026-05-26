@@ -903,14 +903,23 @@ Three small "this should feel like a native app" tweaks.
 
 ### 14.1 Tray "recording" indicator
 
-`pushTrayTitle` in `timer.svelte.ts` now prefixes the elapsed time
-with a red-dot emoji (`\u{1F534}`, 🔴) whenever a timer is
-running, so the user can glance up at the macOS menu bar and see
-that they're tracking without parsing the text. Title becomes
-`🔴 5m` / `🔴 1h 23m`; clears to `''` when nothing runs. The
-emoji renders in color (no NSAttributedString plumbing on the
-Rust side) and macOS scales it down to the menu-bar text height.
-Non-animated by request.
+A small solid red dot — ~half the diameter of an emoji, similar
+to the macOS camera/mic activity indicator — appears alongside
+the elapsed time whenever a timer is running. JS sends just the
+elapsed string (`5m`, `1h 23m`); the Rust side handles the dot.
+
+- `apps/desktop/src-tauri/src/lib.rs::make_recording_dot_icon`
+  generates a 22×22 RGBA bitmap with a centered 9px filled
+  circle (Apple `systemRed` = `#FF3B30`), with a one-pixel
+  antialiased edge. Built at runtime as `Image::new_owned` — no
+  asset file to ship.
+- `set_tray_title` swaps the tray icon to this dot
+  (`set_icon_as_template(false)` so macOS keeps the color) when
+  the title is non-empty, and restores the default template icon
+  when the title clears. The menu bar reads `[•] 5m`.
+
+Non-animated by request. Web build's `pushTrayTitle` is still a
+no-op outside the Tauri shell.
 
 ### 14.2 No text selection on labels
 
@@ -934,10 +943,11 @@ propagating to the parent (or the OS) once you hit the top/bottom.
 
 ### 14.4 New test cases (extending §11.3)
 
-16. **Tray badge.** Start any timer → macOS menu bar reads
-    `🔴 0m`, transitions to `🔴 1m` after a minute. Stop → menu
-    bar text clears. (Tauri build only; the web build's
-    `pushTrayTitle` is a no-op.)
+16. **Tray badge.** Start any timer → the menu bar reads
+    `[•] 0m` (small red dot then elapsed text), transitions to
+    `[•] 1m` after a minute. Stop → dot disappears and the
+    default template icon comes back. (Tauri build only; the
+    web build's `pushTrayTitle` is a no-op.)
 17. **No text selection on labels.** Hover the project name on
     any entry → cursor stays as the default arrow. Cmd-A on the
     popover doesn't blue-select the label text. The minutes

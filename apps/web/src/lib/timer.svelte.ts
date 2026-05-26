@@ -81,12 +81,11 @@ class TimerState {
   private async pushTrayTitle() {
     if (typeof window === 'undefined') return;
     if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') return;
-    // Prefix the elapsed time with a small red dot emoji as a glanceable
-    // "recording" indicator in the macOS menu bar. The emoji renders in
-    // color (no NSAttributedString plumbing needed) and stays a sane size
-    // because macOS scales menu-bar text to the system font height.
-    // When nothing's running the title is cleared so the dot disappears.
-    const next = this.running ? `\u{1F534} ${compactElapsed(this.elapsedMs)}` : '';
+    // Just the elapsed time as plain text. The Rust side swaps the tray
+    // icon for a small red "recording" dot whenever this title is
+    // non-empty, so the menu bar reads `[•] 5m` without any glyph
+    // tricks in JS. Empty string clears both.
+    const next = this.running ? compactElapsed(this.elapsedMs) : '';
     if (next === this.trayTitleLast) return;
     this.trayTitleLast = next;
     try {
