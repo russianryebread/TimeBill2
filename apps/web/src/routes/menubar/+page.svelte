@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { pb, toPbDate } from '$lib/pb';
   import { workspace } from '$lib/workspace.svelte';
   import { timer } from '$lib/timer.svelte';
+  import { api } from '$lib/api';
   import { formatHours } from '@timebill/shared/money';
 
   type Entry = {
@@ -125,7 +126,19 @@
   }
 
   function setDraft(id: string, field: 'h' | 'm', value: string) {
-    const current = drafts[id] ?? { h: '0', m: '0' };
+    // Seed the draft from the entry's current displayed h/m the first time
+    // the user touches either input, so editing minutes alone doesn't
+    // silently zero out the hours field (and vice versa).
+    let current = drafts[id];
+    if (!current) {
+      const e = entries.find((x) => x.id === id);
+      if (e) {
+        const { h, m } = hmFromMs(durationMs(e, timer.now));
+        current = { h: String(h), m: String(m).padStart(2, '0') };
+      } else {
+        current = { h: '0', m: '0' };
+      }
+    }
     drafts[id] = { ...current, [field]: value };
   }
 
@@ -200,32 +213,154 @@
     window.location.href = '/time';
   }
 
-  async function newEntry() {
-    if (timer.running) return openMainApp();
-    // Seed from the most recent entry on the selected day, or any recent entry.
-    let seedProject: string | undefined;
-    let seedTask: string | undefined;
-    if (entriesForSelectedDay.length > 0) {
-      const last = entriesForSelectedDay[0]!;
-      seedProject = last.project;
-      seedTask = last.task || undefined;
-    } else if (workspace.current) {
-      try {
-        const recent = await pb.collection('time_entries').getList(1, 1, {
-          filter: `workspace = "${workspace.current.id}" && ended_at != ""`,
-          sort: '-started_at'
-        });
-        const row = recent.items[0] as any;
-        if (row) {
-          seedProject = row.project;
-          seedTask = row.task || undefined;
-        }
-      } catch (_) {}
+  // ---- "New timer" project picker ----
+  //
+  // Click +New opens an inline popover above the button with a list of active
+  // projects (grouped by client). The most-recently-used project is
+  // pre-selected and a text input filters the list — typing narrows by
+  // client OR project name. Enter starts on the highlighted row, Esc
+  // closes. If a timer is already running, starting a new one auto-stops
+  // it (the PB hook handles that on create).
+  type ProjectOption = {
+    id: string;
+    name: string;
+    color?: string;
+    client: string;
+    expand?: { client?: { id: string; name: string } };
+  };
+  let projects = $state<ProjectOption[]>([]);
+  let projectsLoaded = $state(false);
+  let pickerOpen = $state(false);
+  let pickerQuery = $state('');
+  let pickerHighlightId = $state<string | null>(null);
+  let pickerInputEl: HTMLInputElement | null = null;
+  let lastUsedProjectId = $state<string | null>(null);
+
+  async function loadProjects() {
+    if (!workspace.current || projectsLoaded) return;
+    try {
+      projects = (await api.listProjects({ status: 'active' })) as unknown as ProjectOption[];
+      projectsLoaded = true;
+    } catch (_) {}
+  }
+
+  // Most-recently-used project across the workspace (any day) — used as the
+  // default highlight when the picker opens.
+  async function refreshLastUsedProject() {
+    if (!workspace.current) return;
+    try {
+      const recent = await pb.collection('time_entries').getList(1, 1, {
+        filter: `workspace = "${workspace.current.id}"`,
+        sort: '-started_at'
+      });
+      const row = recent.items[0] as any;
+      if (row) lastUsedProjectId = row.project;
+    } catch (_) {}
+  }
+
+  let filteredProjects = $derived.by(() => {
+    const q = pickerQuery.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) => {
+      const projHit = p.name.toLowerCase().includes(q);
+      const clientHit = (p.expand?.client?.name ?? '').toLowerCase().includes(q);
+      return projHit || clientHit;
+    });
+  });
+
+  // Group filtered projects by client for display.
+  type ProjectGroup = { clientName: string; clientId: string; projects: ProjectOption[] };
+  let projectGroups = $derived.by(() => {
+    const m = new Map<string, ProjectGroup>();
+    for (const p of filteredProjects) {
+      const clientId = p.client;
+      const clientName = p.expand?.client?.name ?? '(no client)';
+      let g = m.get(clientId);
+      if (!g) {
+        g = { clientId, clientName, projects: [] };
+        m.set(clientId, g);
+      }
+      g.projects.push(p);
     }
-    if (!seedProject) return openMainApp();
-    await timer.start({ projectId: seedProject, taskId: seedTask });
+    return Array.from(m.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
+  });
+
+  // Flat ordered list (matches visual order) — used for keyboard nav.
+  let pickerFlat = $derived(projectGroups.flatMap((g) => g.projects));
+
+  async function openPicker() {
+    await loadProjects();
+    await refreshLastUsedProject();
+    pickerQuery = '';
+    // Default highlight: last-used, or first project in the filtered list.
+    pickerHighlightId = lastUsedProjectId &&
+      projects.some((p) => p.id === lastUsedProjectId)
+      ? lastUsedProjectId
+      : projects[0]?.id ?? null;
+    pickerOpen = true;
+    await tick();
+    pickerInputEl?.focus();
+  }
+
+  function closePicker() {
+    pickerOpen = false;
+    pickerQuery = '';
+  }
+
+  async function startOnProject(projectId: string) {
+    closePicker();
+    // Reuse the most-recent task on this project so the new entry keeps
+    // its activity classification when the user picks "the same project
+    // I was on yesterday." Falls back to no task.
+    let taskId: string | undefined;
+    try {
+      const recent = await pb.collection('time_entries').getList(1, 1, {
+        filter: `project = "${projectId}" && task != ""`,
+        sort: '-started_at'
+      });
+      const row = recent.items[0] as any;
+      if (row?.task) taskId = row.task;
+    } catch (_) {}
+    await timer.start({ projectId, taskId });
+    lastUsedProjectId = projectId;
     await load();
   }
+
+  function onPickerKey(ev: KeyboardEvent) {
+    if (!pickerOpen) return;
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closePicker();
+      return;
+    }
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      const id = pickerHighlightId ?? pickerFlat[0]?.id ?? null;
+      if (id) startOnProject(id);
+      return;
+    }
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      const list = pickerFlat;
+      if (list.length === 0) return;
+      const idx = Math.max(0, list.findIndex((p) => p.id === pickerHighlightId));
+      const next =
+        ev.key === 'ArrowDown'
+          ? Math.min(list.length - 1, idx + 1)
+          : Math.max(0, idx - 1);
+      pickerHighlightId = list[next]?.id ?? null;
+    }
+  }
+
+  // If the query changes and the current highlight isn't in the filtered
+  // list, snap to the first match so Enter always starts something visible.
+  $effect(() => {
+    void pickerQuery;
+    if (!pickerOpen) return;
+    if (!pickerFlat.some((p) => p.id === pickerHighlightId)) {
+      pickerHighlightId = pickerFlat[0]?.id ?? null;
+    }
+  });
 
   onMount(() => {
     if (workspace.current) load();
@@ -409,12 +544,14 @@
   </div>
 
   <!-- Footer toolbar -->
-  <footer class="flex items-center justify-between border-t border-slate-200 px-4 py-2">
+  <footer class="relative flex items-center justify-between border-t border-slate-200 px-4 py-2">
     <button
       type="button"
       class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-brand-700"
-      onclick={newEntry}
-      title="Start a new timer using your last project"
+      onclick={() => (pickerOpen ? closePicker() : openPicker())}
+      title="Start a new timer on a project"
+      aria-haspopup="listbox"
+      aria-expanded={pickerOpen}
     >
       <span class="icon-[ph--plus]" aria-hidden="true"></span>
       New
@@ -428,6 +565,70 @@
       <span class="icon-[ph--arrow-square-out]" aria-hidden="true"></span>
       Open app
     </button>
+
+    {#if pickerOpen}
+      <!-- Click-shield: closes the picker if the user clicks anywhere
+           outside the popover itself. -->
+      <button
+        type="button"
+        class="fixed inset-0 z-30 cursor-default bg-transparent"
+        aria-label="Close project picker"
+        onclick={closePicker}
+      ></button>
+      <div
+        class="absolute bottom-full left-2 z-40 mb-2 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+        role="listbox"
+        aria-label="Pick a project to start"
+      >
+        <div class="border-b border-slate-100 px-2 py-1.5">
+          <input
+            bind:this={pickerInputEl}
+            bind:value={pickerQuery}
+            onkeydown={onPickerKey}
+            placeholder="Search client or project…"
+            class="w-full rounded px-2 py-1 text-sm focus:outline-none"
+          />
+        </div>
+        <div class="max-h-64 overflow-auto py-1">
+          {#if !projectsLoaded}
+            <div class="px-3 py-4 text-center text-xs text-slate-500">Loading…</div>
+          {:else if pickerFlat.length === 0}
+            <div class="px-3 py-4 text-center text-xs text-slate-500">No matching projects.</div>
+          {:else}
+            {#each projectGroups as g (g.clientId)}
+              <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-500">
+                {g.clientName}
+              </div>
+              {#each g.projects as p (p.id)}
+                {@const isHi = p.id === pickerHighlightId}
+                {@const isLast = p.id === lastUsedProjectId}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={isHi}
+                  onmouseenter={() => (pickerHighlightId = p.id)}
+                  onclick={() => startOnProject(p.id)}
+                  class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm
+                    {isHi ? 'bg-brand-50 text-brand-800' : 'text-slate-800 hover:bg-slate-50'}"
+                >
+                  <span
+                    class="h-2 w-2 shrink-0 rounded-full"
+                    style:background-color={p.color ?? '#94a3b8'}
+                  ></span>
+                  <span class="flex-1 truncate">{p.name}</span>
+                  {#if isLast}
+                    <span class="text-[10px] text-slate-400">last used</span>
+                  {/if}
+                </button>
+              {/each}
+            {/each}
+          {/if}
+        </div>
+        <div class="border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-500">
+          ↑↓ to navigate · Enter to start · Esc to close
+        </div>
+      </div>
+    {/if}
   </footer>
 </div>
 

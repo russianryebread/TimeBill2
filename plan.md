@@ -832,3 +832,67 @@ on every Delete/Void action.
 - Public invoice view doesn't render a list of recorded payments
   (intentional — keep client-visible page minimal). Only the
   totals row and the PAID badge surface payment state.
+
+## Phase 13 — Menubar +New project picker + inline-edit fix
+
+### 13.1 +New button project picker
+
+The old `+New` would auto-start a timer on the last-used project, or
+open the main app if a timer was already running. Two failure modes
+fell out: (a) when a timer was running, clicking +New silently
+"did nothing" from the popover's POV, and (b) the user had no way
+to choose a *different* project before starting.
+
+Replaced with an inline listbox popover that opens above the +New
+button:
+
+- Search input at the top filters by client OR project name as you
+  type. Empty query shows everything.
+- Projects are grouped by client (uppercase client label, then the
+  projects under that client). Driven from
+  `api.listProjects({ status: 'active' })`.
+- The most-recently-used project is highlighted by default and
+  marked with a small "last used" pill. Computed by querying
+  `time_entries` sorted by `-started_at` for the workspace.
+- Arrow Up/Down moves the highlight; Enter starts on the
+  highlighted row; Esc or clicking outside closes the popover.
+  A `fixed inset-0` invisible button serves as the click-shield.
+- Clicking a row starts a timer immediately. If a timer is already
+  running, the `time_entries` before-create hook auto-stops it —
+  no special-case handling in the picker.
+- The new timer reuses the most-recent `task` on that project when
+  one exists, so a Resume-style click keeps its activity type.
+
+### 13.2 Inline hours/minutes editor — preserve untouched field
+
+Editing minutes alone silently reset hours to 0 (and vice versa)
+because `setDraft()` fell back to `{ h: '0', m: '0' }` when no
+draft existed yet. Fixed: seed the draft from the entry's current
+displayed `{h, m}` the first time either input is touched.
+Regression discovered while exercising the popover after building
+the picker.
+
+### 13.3 Test cases (extending §11.3)
+
+9. **+New shows picker.** Click +New on the popover → an inline
+   listbox appears above the button, anchored to the +New corner.
+   The header is a search input and the body lists active projects
+   grouped by client.
+10. **Last-used pre-selected.** Open picker, observe the most
+    recent project is highlighted and labeled "last used."
+    Start a timer on a different project (e.g. Acme Corp);
+    re-open the picker; the new project is now "last used."
+11. **Search filter.** Type "bafs" → only the BAFS group remains;
+    clear the query → full list returns.
+12. **Keyboard nav.** Arrow keys move the highlight without
+    losing the "last used" label on the unrelated row;
+    Enter starts the highlighted project; Esc closes.
+13. **Click outside closes** without starting anything.
+14. **Start while running auto-stops.** Open picker with a running
+    timer, click a different project → previous timer ends, new
+    one starts; only one highlighted row remains.
+15. **Edit minutes alone keeps hours.** Open a row showing
+    `3h 15m`, triple-click the minutes input, type `30`, press
+    Enter → row redraws to `3h 30m` (not `0h 30m`). Day total
+    on the week strip moves accordingly. Symmetric: editing
+    hours alone preserves minutes.
