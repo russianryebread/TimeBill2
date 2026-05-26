@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { pb, toPbDate } from '$lib/pb';
   import { workspace } from '$lib/workspace.svelte';
   import { formatUSD, formatHours, hoursDecimal } from '@timebill/shared/money';
@@ -21,8 +23,57 @@
   type Invoice = { id: string; number: string; issue_date: string; due_date: string; status: string; total_cents: number; expand?: { client?: { name: string } } };
   type Payment = { id: string; date: string; amount_cents: number; method: string; invoice: string };
 
-  let year = $state(new Date().getFullYear());
-  let month = $state(new Date().getMonth()); // 0-11
+  // Initial month/year come from `?ym=YYYY-MM` if present in the URL,
+  // otherwise default to the current month. Keeps reports shareable as
+  // links — paste a URL, land on the same month another teammate is
+  // looking at.
+  function parseYm(s: string | null): { y: number; m: number } | null {
+    if (!s) return null;
+    const m = /^(\d{4})-(\d{1,2})$/.exec(s);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    if (mo < 0 || mo > 11) return null;
+    return { y, m: mo };
+  }
+  function ymFromUrl(): { y: number; m: number } {
+    const fromUrl = typeof window !== 'undefined' ? parseYm(new URLSearchParams(window.location.search).get('ym')) : null;
+    if (fromUrl) return fromUrl;
+    const now = new Date();
+    return { y: now.getFullYear(), m: now.getMonth() };
+  }
+  const initial = ymFromUrl();
+  let year = $state(initial.y);
+  let month = $state(initial.m); // 0-11
+
+  // Write the current selection back to the URL whenever it changes so
+  // a back/forward arrow or a copy-link reflects what the user is
+  // looking at. `replaceState` keeps history clean (we're not adding a
+  // new entry per month-bump).
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const want = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const have = new URLSearchParams(window.location.search).get('ym');
+    if (have === want) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('ym', want);
+    goto(url.pathname + url.search, { replaceState: true, keepFocus: true, noScroll: true });
+  });
+
+  function bumpMonth(delta: number) {
+    let m = month + delta;
+    let y = year;
+    while (m < 0) {
+      m += 12;
+      y -= 1;
+    }
+    while (m > 11) {
+      m -= 12;
+      y += 1;
+    }
+    month = m;
+    year = y;
+  }
   let entries = $state<Entry[]>([]);
   let yearEntries = $state<Entry[]>([]);
   let loading = $state(true);
@@ -149,6 +200,31 @@
       (c) => c.inYear && c.date.getMonth() === month && c.ms > 0
     ).length
   );
+
+  // Small per-month calendar (right column of the heatmap section). 6×7
+  // Monday-start grid for the selected month; reuses the same fixed
+  // hour-threshold color ramp as the year heatmap so the two read the
+  // same. Days outside the selected month render dimmed.
+  type MonthCell = { date: Date; ms: number; inMonth: boolean };
+  let monthCalendar = $derived.by(() => {
+    const first = startOfMonth(year, month);
+    const last = new Date(year, month + 1, 0);
+    const offset = (first.getDay() + 6) % 7; // 0 = Mon
+    const totalCells = Math.ceil((offset + last.getDate()) / 7) * 7;
+    const totals = new Map<string, number>();
+    for (const e of entries) {
+      const d = new Date(e.started_at);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      totals.set(key, (totals.get(key) || 0) + durationMs(e));
+    }
+    const cells: MonthCell[] = [];
+    for (let i = 0; i < totalCells; i++) {
+      const d = new Date(year, month, i - offset + 1);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      cells.push({ date: d, ms: totals.get(key) || 0, inMonth: d.getMonth() === month });
+    }
+    return cells;
+  });
 
   function shortDate(d: Date): string {
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -453,7 +529,15 @@
       <h1 class="text-2xl font-bold text-slate-900">Reports</h1>
       <p class="mt-1 text-sm text-slate-600">Where your time and money go.</p>
     </div>
-    <div class="flex items-end gap-3">
+    <div class="flex items-end gap-2">
+      <button
+        type="button"
+        class="flex h-9 w-9 items-center justify-center rounded border border-slate-300 text-slate-600 hover:border-brand-500 hover:text-brand-700"
+        onclick={() => bumpMonth(-1)}
+        aria-label="Previous month"
+      >
+        <span class="icon-[ph--caret-left]" aria-hidden="true"></span>
+      </button>
       <label class="block">
         <span class="text-xs text-slate-500">Month</span>
         <select
@@ -473,6 +557,14 @@
           class="mt-1 w-24 rounded border border-slate-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
         />
       </label>
+      <button
+        type="button"
+        class="flex h-9 w-9 items-center justify-center rounded border border-slate-300 text-slate-600 hover:border-brand-500 hover:text-brand-700"
+        onclick={() => bumpMonth(1)}
+        aria-label="Next month"
+      >
+        <span class="icon-[ph--caret-right]" aria-hidden="true"></span>
+      </button>
     </div>
   </div>
 
@@ -494,57 +586,86 @@
     </div>
   </section>
 
-  <!-- Heatmap (GitHub-style year contributions) -->
-  <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-    <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-sm font-medium text-slate-700">Daily hours · {year}</h2>
-      <div class="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500">
-        <span>less</span>
-        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#ebedf0"></span>
-        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#9be9a8"></span>
-        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#40c463"></span>
-        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#30a14e"></span>
-        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#216e39"></span>
-        <span>more</span>
+  <!-- Heatmap: year (GitHub-style contributions) on the left,
+       focused month calendar on the right (same color ramp). -->
+  <section class="mt-6 grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-2">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-medium text-slate-700">Daily hours · {year}</h2>
+        <div class="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500">
+          <span>less</span>
+          <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#ebedf0"></span>
+          <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#9be9a8"></span>
+          <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#40c463"></span>
+          <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#30a14e"></span>
+          <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#216e39"></span>
+          <span>more</span>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <div class="inline-flex gap-2">
+          <!-- Mon/Wed/Fri labels in the left margin -->
+          <div class="grid grid-rows-7 gap-[2px] pt-[14px] text-[9px] text-slate-400">
+            <span></span>
+            <span>Mon</span>
+            <span></span>
+            <span>Wed</span>
+            <span></span>
+            <span>Fri</span>
+            <span></span>
+          </div>
+          <div>
+            <!-- Month labels above the grid -->
+            <div
+              class="relative mb-[2px] h-3 text-[9px] uppercase tracking-wider text-slate-500"
+              style:width="{heatmapWeeks * 13}px"
+            >
+              {#each heatmapMonthLabels as lbl}
+                <span class="absolute" style:left="{lbl.col * 13}px">{MONTHS[lbl.month]}</span>
+              {/each}
+            </div>
+            <!-- The cells: 7 rows × N columns, column-major fill order. -->
+            <div
+              class="grid grid-rows-7 gap-[2px]"
+              style:grid-auto-flow="column"
+              style:grid-auto-columns="11px"
+            >
+              {#each yearHeatmap as cell}
+                <span
+                  class="h-[11px] w-[11px] rounded-sm {cell.inYear ? '' : 'opacity-30'}"
+                  style:background-color={heatmapColor(cell.ms)}
+                  title={`${shortDate(cell.date)} — ${cell.ms > 0 ? formatHours(cell.ms) + ' tracked' : 'no time tracked'}`}
+                ></span>
+              {/each}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="overflow-x-auto">
-      <div class="inline-flex gap-2">
-        <!-- Mon/Wed/Fri labels in the left margin -->
-        <div class="grid grid-rows-7 gap-[2px] pt-[14px] text-[9px] text-slate-400">
-          <span></span>
-          <span>Mon</span>
-          <span></span>
-          <span>Wed</span>
-          <span></span>
-          <span>Fri</span>
-          <span></span>
-        </div>
-        <div>
-          <!-- Month labels above the grid -->
+
+    <!-- Focused month mini-calendar — full day grid for the selected
+         month, using the same hour-threshold color ramp. -->
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-medium text-slate-700">{monthLabel()}</h2>
+        <span class="font-mono text-xs text-slate-500">{formatHours(monthTotalMs)}</span>
+      </div>
+      <div class="grid grid-cols-7 gap-1 text-[10px]">
+        {#each WEEK_LABELS as w}
+          <div class="text-center uppercase tracking-wider text-slate-400">{w}</div>
+        {/each}
+        {#each monthCalendar as cell}
           <div
-            class="relative mb-[2px] h-3 text-[9px] uppercase tracking-wider text-slate-500"
-            style:width="{heatmapWeeks * 13}px"
+            class="flex aspect-square flex-col items-center justify-center rounded font-medium
+              {cell.inMonth ? 'text-slate-700' : 'text-slate-300 opacity-50'}"
+            style:background-color={cell.inMonth ? heatmapColor(cell.ms) : '#f8fafc'}
+            title={`${shortDate(cell.date)} — ${cell.ms > 0 ? formatHours(cell.ms) + ' tracked' : 'no time tracked'}`}
           >
-            {#each heatmapMonthLabels as lbl}
-              <span class="absolute" style:left="{lbl.col * 13}px">{MONTHS[lbl.month]}</span>
-            {/each}
+            <span class={cell.ms / 3_600_000 >= 4 && cell.inMonth ? 'text-white' : ''}>
+              {cell.date.getDate()}
+            </span>
           </div>
-          <!-- The cells: 7 rows × N columns, column-major fill order. -->
-          <div
-            class="grid grid-rows-7 gap-[2px]"
-            style:grid-auto-flow="column"
-            style:grid-auto-columns="11px"
-          >
-            {#each yearHeatmap as cell}
-              <span
-                class="h-[11px] w-[11px] rounded-sm {cell.inYear ? '' : 'opacity-30'}"
-                style:background-color={heatmapColor(cell.ms)}
-                title={`${shortDate(cell.date)} — ${cell.ms > 0 ? formatHours(cell.ms) + ' tracked' : 'no time tracked'}`}
-              ></span>
-            {/each}
-          </div>
-        </div>
+        {/each}
       </div>
     </div>
   </section>

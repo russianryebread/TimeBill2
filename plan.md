@@ -989,3 +989,63 @@ Replaced with a GitHub-contributions-style year grid:
 
 The "Active days" summary card still scopes to the selected month
 via a derived `activeDaysInMonth` over the new heatmap data.
+
+## Phase 16 — Reports: focused month calendar + linkable month nav
+
+Sitting next to the year heatmap was a wasted right-third of the
+section. Filled it with a focused mini calendar for the selected
+month and tightened the month-navigation UX:
+
+### 16.1 Focused month mini-calendar
+
+- A 6×7 Monday-start grid for the selected month renders in the
+  right column (`lg:col-span-1`) of the heatmap section.
+- Cells reuse the same fixed-threshold hour color ramp as the year
+  heatmap so the two read the same. Day numbers print on top of
+  the cell; cells with ≥4 h get white text for legibility against
+  the darker greens.
+- Days that spill in from the previous/next month are dimmed; the
+  in-month days show the day number and a `title` tooltip with
+  the same `weekday, month day, year — Xh Ym tracked` format.
+- Section header on the right is `{Month Year}` with the
+  month-total hours top-right (e.g. `May 2026 · 9:28`).
+
+### 16.2 Linkable month selection (URL `?ym=YYYY-MM`)
+
+- On mount, parse `?ym=YYYY-MM` from `window.location.search`. If
+  present, seed the page's `year`/`month` state from it; otherwise
+  default to the current month.
+- A `$effect` writes the selection back to the URL whenever it
+  changes, using `goto(url, { replaceState: true, keepFocus: true,
+  noScroll: true })` so back/forward history stays clean and the
+  month-arrow buttons keep their focus ring while you click them.
+- The result: every report URL is shareable — paste
+  `/reports?ym=2025-12` to land on December 2025 directly.
+
+### 16.3 Prev / Next month arrows
+
+- Two chevron icon-buttons (Phosphor `ph--caret-left`/`right`)
+  flank the existing Month/Year selectors at the top right.
+- `bumpMonth(delta)` wraps year boundaries: clicking ◀ on
+  January goes to December of the previous year; ▶ on December
+  goes to January of the next year.
+- Visually grouped in the same flex row as the dropdowns so the
+  cluster reads as one "what month am I on" control.
+
+### 16.4 Test cases (extending §11.3)
+
+19. **Linkable URL.** Navigate to
+    `/reports?ym=2025-12` directly → page boots on December 2025,
+    selectors and all per-month summaries (Project mix, Clients,
+    Active days) reflect December.
+20. **URL stays in sync.** Click `Next` until the URL reads
+    `?ym=2026-03`; refresh → still on March 2026.
+21. **Year wrap.** Open `?ym=2026-01`, click ◀ → URL becomes
+    `?ym=2025-12` and the mini calendar redraws as December 2025.
+    Symmetric on December → ◀ → January next year.
+22. **Mini-calendar coloring.** A day with ≥6 h of tracked time
+    shows the darkest green and a white day number; a day with
+    no time shows the empty grey and a slate-700 number.
+23. **Hover tooltip.** Hover any in-month cell → native tooltip
+    reads `Thu, May 21, 2026 — 3:15 tracked`. Out-of-month spill
+    cells are dimmed and tooltip says "no time tracked."
