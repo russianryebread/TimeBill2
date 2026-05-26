@@ -1,7 +1,18 @@
 import { pb } from './pb';
 import { workspace } from './workspace.svelte';
 import { auth } from './auth.svelte';
-import { formatHMS } from '@timebill/shared/money';
+
+/**
+ * Compact "menu-bar friendly" label for the tray title. Strips seconds; uses
+ * "Xh Ym" once an hour has passed, otherwise just "Ym".
+ */
+function compactElapsed(ms: number): string {
+  const totalMinutes = Math.floor(Math.max(0, ms) / 60_000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
 export type TimeEntry = {
   id: string;
@@ -61,10 +72,16 @@ class TimerState {
    * timer is running. No-op outside Tauri.
    */
   private trayTitleLast = '';
+  /**
+   * Push the running timer's elapsed (minute-precision) to the macOS tray
+   * title. Updates only when the minute changes, so each timer second-tick
+   * is essentially free. Cleared (and icon restored) when no timer is
+   * running. No-op outside Tauri.
+   */
   private async pushTrayTitle() {
     if (typeof window === 'undefined') return;
     if (typeof (window as any).__TAURI_INTERNALS__ === 'undefined') return;
-    const next = this.running ? formatHMS(this.elapsedMs) : '';
+    const next = this.running ? compactElapsed(this.elapsedMs) : '';
     if (next === this.trayTitleLast) return;
     this.trayTitleLast = next;
     try {

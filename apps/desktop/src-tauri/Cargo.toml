@@ -21,3 +21,9 @@ serde_json = "1"
 # Cross-platform "how long since the user last touched the input devices?"
 # (macOS uses IOKit under the hood). Used by the idle watcher thread.
 user-idle = "0.6"
+
+[target."cfg(target_os = \"macos\")".dependencies]
+# For NSWindow access — round the actual macOS window via
+# contentView.layer.cornerRadius rather than relying on the inner div alone.
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSView"] }

@@ -7,19 +7,61 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow, WindowEvent,
 };
 
+#[cfg(target_os = "macos")]
+fn round_window_corners(window: &WebviewWindow, radius: f64) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    let ns_window_ptr = match window.ns_window() {
+        Ok(p) => p as *mut AnyObject,
+        Err(_) => return,
+    };
+    if ns_window_ptr.is_null() {
+        return;
+    }
+    unsafe {
+        let content_view: *mut AnyObject = msg_send![ns_window_ptr, contentView];
+        if content_view.is_null() {
+            return;
+        }
+        // Force the content view to be layer-backed first.
+        let _: () = msg_send![content_view, setWantsLayer: true];
+        let layer: *mut AnyObject = msg_send![content_view, layer];
+        if layer.is_null() {
+            return;
+        }
+        let _: () = msg_send![layer, setCornerRadius: radius];
+        let _: () = msg_send![layer, setMasksToBounds: true];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn round_window_corners(_window: &WebviewWindow, _radius: f64) {}
+
 const TRAY_ID: &str = "timebill-tray";
 
 /// JS-callable: update the menu-bar text shown next to the tray icon.
-/// Pass an empty string to clear it (no running timer).
+/// While a timer is running, the JS layer pushes "5m" / "1h 28m" labels here
+/// and we *hide* the icon so the text doesn't crowd the menu bar. When the
+/// title clears, we restore the icon. Smaller font is achieved by wrapping
+/// the title in an NSAttributedString (a future polish; the default macOS
+/// status item font is already compact).
 #[tauri::command]
 fn set_tray_title(app: AppHandle, title: String) {
-    if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let value = if title.trim().is_empty() {
-            None
-        } else {
-            Some(title)
-        };
-        let _ = tray.set_title(value.as_deref());
+    let tray = match app.tray_by_id(TRAY_ID) {
+        Some(t) => t,
+        None => return,
+    };
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        // Restore icon, clear text.
+        let _ = tray.set_title(None::<&str>);
+        if let Some(icon) = app.default_window_icon() {
+            let _ = tray.set_icon(Some(icon.clone()));
+        }
+    } else {
+        let _ = tray.set_title(Some(trimmed));
+        // Hide the icon while running so the time gets full real estate.
+        let _ = tray.set_icon(None);
     }
 }
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -146,6 +188,12 @@ pub fn run() {
 
             // Kick off the idle watcher (emits `idle-detected` events).
             spawn_idle_watcher(app.handle().clone());
+
+            // Round the menubar window's NSWindow itself (not just the inner
+            // div) so the OS-level shape matches the visual card.
+            if let Some(w) = app.get_webview_window("menubar") {
+                round_window_corners(&w, 14.0);
+            }
 
             // Build tray menu (right-click).
             let show_main =
