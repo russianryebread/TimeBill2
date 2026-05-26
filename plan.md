@@ -709,9 +709,12 @@ Fix (`apps/web/src/lib/timer.svelte.ts`):
   in the list (not a separate banner) and uses the same
   client / project / task layout as historic rows, with a
   `bg-brand-50` highlight and `text-brand-800` project name.
-- A spinning Phosphor `ph--clock-clockwise-duotone` icon replaces the
-  project-color dot on the active row (`animate-spin`, 3-second
-  rotation for a calm beat — not a frantic one).
+- An inline SVG clock replaces the project-color dot on the active
+  row. The face (two concentric circles) stays still; only the two
+  hand `<line>`s rotate (minute hand 3s, hour hand 36s — a calm beat,
+  not a frantic one). Implemented with a scoped `clock-hand-spin`
+  keyframe and `transform-origin: 12px 12px` on each hand so it
+  pivots around the clock center.
 - Each row has a circular play/pause toggle:
   - inactive rows → `ph--play-fill` on a bordered button; clicking
     starts a new timer on that row's project + task. Disabled while

@@ -303,13 +303,38 @@
             class="flex items-center gap-3 border-b border-slate-100 px-3 py-2 last:border-0
               {isRunning ? 'bg-brand-50' : ''}"
           >
-            <!-- Project color dot, or spinning clock for the active entry -->
+            <!-- Project color dot, or clock with spinning hands for the active entry -->
             {#if isRunning}
-              <span
-                class="icon-[ph--clock-clockwise-duotone] h-4 w-4 shrink-0 animate-spin text-brand-500"
-                style="animation-duration: 3s;"
+              <svg
+                class="h-4 w-4 shrink-0 text-brand-500"
+                viewBox="0 0 24 24"
+                fill="none"
                 aria-label="Timer running"
-              ></span>
+              >
+                <circle cx="12" cy="12" r="9.25" fill="currentColor" opacity="0.2" />
+                <circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.5" />
+                <line
+                  class="clock-hand clock-hand--hour"
+                  x1="12"
+                  y1="12"
+                  x2="12"
+                  y2="7.5"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                />
+                <line
+                  class="clock-hand clock-hand--minute"
+                  x1="12"
+                  y1="12"
+                  x2="12"
+                  y2="5"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <circle cx="12" cy="12" r="0.9" fill="currentColor" />
+              </svg>
             {:else}
               <span
                 class="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -422,5 +447,21 @@
   input[type='number'] {
     -moz-appearance: textfield;
     appearance: textfield;
+  }
+  /* Just the hands spin — face stays still. */
+  .clock-hand {
+    transform-origin: 12px 12px;
+    animation: clock-hand-spin linear infinite;
+  }
+  .clock-hand--minute {
+    animation-duration: 3s;
+  }
+  .clock-hand--hour {
+    animation-duration: 36s;
+  }
+  @keyframes clock-hand-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
