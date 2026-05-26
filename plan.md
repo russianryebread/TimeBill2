@@ -403,3 +403,53 @@ Big batch of polish and the first competitor-data import.
 - `CLAUDE.md` now contains two more standing instructions:
   - Commit after each milestone.
   - Mirror this spec to the repo's `plan.md`.
+
+---
+
+## Phase 7 (in progress) — email send
+
+Closes the "draft → send → client receives" loop. Today the Send button
+generates the PDF and flips status; clients still have to be sent the
+link manually.
+
+### 7.1 Sender identity on the workspace
+
+- New `workspaces` fields:
+  - `invoice_from_email` (text, optional) — overrides the SMTP sender
+    when set.
+  - `invoice_from_name` (text, optional) — friendly name in the From
+    header (defaults to `workspaces.name`).
+- Configured at `/settings/email`, which also links to the PocketBase
+  admin UI for the actual SMTP host/port/credentials. We rely on PB's
+  built-in `$app.newMailClient()`, which uses the SMTP configured in
+  admin settings — when SMTP isn't configured, PB logs the email body
+  instead of sending. Useful for local development.
+
+### 7.2 Server endpoint
+
+`POST /api/timebill/invoices/:id/send-email` — auth required.
+- Loads invoice + client + workspace from the caller's workspaces.
+- Requires the invoice to have a PDF already generated. If not, the
+  client should regenerate first (the editor does this before calling).
+- Builds a simple, brand-themed plain-text body:
+  > Hi {client name},
+  > Invoice {number} for {total} is ready. You can view it online or
+  > download the PDF here: {public link}.
+  > Due {due_date}.
+  > — {workspace name}
+- Attaches the PDF.
+- Recipient defaults to `clients.email`; the client form may pass an
+  override + optional `cc`.
+- On success: if the invoice is still `draft`, flip status to `sent`.
+- Returns `{ to, status }`.
+
+### 7.3 Invoice editor changes
+
+- Existing `Send` button is renamed `Mark sent` — keeps the legacy
+  PDF-attach-only flow for situations where the user emails out of band.
+- New primary `Send to client` button:
+  1. Generates the PDF (same path as today).
+  2. Uploads it.
+  3. Opens a confirm modal pre-filled with the client's email; user can
+     override and add a CC. Submit calls `/send-email`.
+  4. Status banner reflects the response.

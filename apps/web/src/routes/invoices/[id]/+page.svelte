@@ -330,7 +330,8 @@
     URL.revokeObjectURL(url);
   }
 
-  async function sendInvoice() {
+  /** Mark sent: just attach the PDF and flip status. No email. */
+  async function markSent() {
     if (!invoice) return;
     pdfStatus = 'Generating PDF…';
     try {
@@ -339,10 +340,53 @@
       form.append('pdf', file);
       form.append('status', 'sent');
       await pb.collection('invoices').update(invoice.id, form);
-      pdfStatus = 'Sent (PDF attached). Share the public link with your client.';
+      pdfStatus = 'Marked sent. Share the public link with your client.';
       await load();
     } catch (err) {
       pdfStatus = err instanceof Error ? err.message : 'Failed';
+    }
+  }
+
+  // Send-to-client modal
+  let showSendModal = $state(false);
+  let sendTo = $state('');
+  let sendCc = $state('');
+  let sendStatus = $state('');
+  let sending = $state(false);
+
+  function openSendModal() {
+    if (!invoice) return;
+    sendTo = invoice.expand?.client?.email ?? '';
+    sendCc = '';
+    sendStatus = '';
+    showSendModal = true;
+  }
+
+  async function sendToClient(e: SubmitEvent) {
+    e.preventDefault();
+    if (!invoice) return;
+    sendStatus = '';
+    sending = true;
+    try {
+      // (1) Ensure a PDF is attached.
+      if (!invoice.pdf) {
+        sendStatus = 'Generating PDF…';
+        const file = await generatePdf();
+        const form = new FormData();
+        form.append('pdf', file);
+        await pb.collection('invoices').update(invoice.id, form);
+      }
+      sendStatus = 'Sending…';
+      const res = await pb.send(`/api/timebill/invoices/${invoice.id}/send-email`, {
+        method: 'POST',
+        body: { to: sendTo, cc: sendCc }
+      });
+      sendStatus = `Sent to ${res.to}${res.cc ? ` (cc: ${res.cc})` : ''}. Status is now "${res.status}".`;
+      await load();
+    } catch (err) {
+      sendStatus = err instanceof Error ? err.message : 'Send failed';
+    } finally {
+      sending = false;
     }
   }
 
@@ -451,13 +495,23 @@
         >
           Copy public link
         </button>
-        {#if invoice.status === 'draft'}
+        {#if invoice.status === 'draft' || invoice.status === 'sent' || invoice.status === 'viewed' || invoice.status === 'overdue'}
           <button
-            class="rounded bg-brand-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-900"
-            onclick={sendInvoice}
+            class="flex items-center gap-1.5 rounded bg-brand-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-900 disabled:opacity-50"
+            onclick={openSendModal}
             disabled={lineItems.length === 0}
           >
-            Send
+            <span class="icon-[ph--paper-plane-tilt-duotone] text-base" aria-hidden="true"></span>
+            Send to client
+          </button>
+        {/if}
+        {#if invoice.status === 'draft'}
+          <button
+            class="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            onclick={markSent}
+            disabled={lineItems.length === 0}
+          >
+            Mark sent
           </button>
         {/if}
         {#if invoice.status !== 'void' && invoice.status !== 'paid'}
@@ -787,3 +841,62 @@
     </div>
   {/if}
 </div>
+
+{#if showSendModal}
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4" role="dialog">
+    <form
+      onsubmit={sendToClient}
+      class="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-xl"
+    >
+      <h2 class="flex items-center gap-2 text-lg font-semibold text-slate-900">
+        <span class="icon-[ph--paper-plane-tilt-duotone] text-xl text-brand-700" aria-hidden="true"></span>
+        Send invoice to client
+      </h2>
+      <p class="text-sm text-slate-600">
+        Emails the PDF plus a link to the public view. Configure SMTP in
+        <a href="/_/" target="_blank" rel="noopener" class="text-brand-600 hover:underline">PocketBase admin</a>
+        for real delivery; without it, the email body is logged on the server.
+      </p>
+
+      <label class="block">
+        <span class="text-sm text-slate-700">To</span>
+        <input
+          type="email"
+          required
+          bind:value={sendTo}
+          class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </label>
+      <label class="block">
+        <span class="text-sm text-slate-700">CC (optional)</span>
+        <input
+          type="email"
+          bind:value={sendCc}
+          class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </label>
+
+      {#if sendStatus}
+        <p class="rounded bg-slate-50 px-3 py-2 text-xs text-slate-700">{sendStatus}</p>
+      {/if}
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          class="rounded px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          onclick={() => (showSendModal = false)}
+          disabled={sending}
+        >
+          Close
+        </button>
+        <button
+          type="submit"
+          class="rounded bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-900 disabled:opacity-50"
+          disabled={sending}
+        >
+          {sending ? 'Sending…' : 'Send email'}
+        </button>
+      </div>
+    </form>
+  </div>
+{/if}

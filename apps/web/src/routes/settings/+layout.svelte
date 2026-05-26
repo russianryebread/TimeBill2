@@ -6,6 +6,7 @@
     { href: '/settings/workspace', label: 'Workspace' },
     { href: '/settings/tasks', label: 'Activity types' },
     { href: '/settings/billing', label: 'Billing' },
+    { href: '/settings/email', label: 'Email' },
     { href: '/settings/import', label: 'Import' }
   ];
 
