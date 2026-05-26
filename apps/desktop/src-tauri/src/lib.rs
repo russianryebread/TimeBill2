@@ -4,12 +4,47 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, WebviewWindow,
+    AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use user_idle::UserIdle;
 
-fn toggle_menubar_window(window: &WebviewWindow) {
+/// Reposition the menubar window so its top edge sits just under the tray
+/// icon, horizontally centered on it. Falls back to a no-op if anything in
+/// the math goes sideways.
+fn anchor_to_tray(window: &WebviewWindow, tray_rect: &Rect) {
+    let win_size = match window.outer_size() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    // `tray_rect` carries Logical or Physical variants depending on platform;
+    // normalize via the `.to_physical()` accessors so we always work in pixels.
+    let pos = tray_rect.position.to_physical::<f64>(scale);
+    let size = tray_rect.size.to_physical::<f64>(scale);
+    let x = pos.x + (size.width / 2.0) - (win_size.width as f64 / 2.0);
+    // Tiny gap so it floats just below the tray icon rather than overlapping.
+    let y = pos.y + size.height + 4.0;
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+}
+
+fn show_menubar_at(window: &WebviewWindow, tray_rect: &Rect) {
+    anchor_to_tray(window, tray_rect);
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn toggle_menubar_at(window: &WebviewWindow, tray_rect: &Rect) {
+    if let Ok(true) = window.is_visible() {
+        let _ = window.hide();
+    } else {
+        show_menubar_at(window, tray_rect);
+    }
+}
+
+/// Keyboard-triggered toggle — we don't know the tray rect, so just show
+/// wherever it last sat. (User can re-click the tray icon to re-anchor.)
+fn toggle_menubar_in_place(window: &WebviewWindow) {
     if let Ok(true) = window.is_visible() {
         let _ = window.hide();
     } else {
@@ -74,12 +109,21 @@ pub fn run() {
                         && event.state() == ShortcutState::Pressed
                     {
                         if let Some(window) = app.get_webview_window("menubar") {
-                            toggle_menubar_window(&window);
+                            toggle_menubar_in_place(&window);
                         }
                     }
                 })
                 .build(),
         )
+        .on_window_event(|window, event| {
+            // Menubar popover should dismiss when the user clicks elsewhere
+            // (standard macOS menu-bar app behavior).
+            if window.label() == "menubar" {
+                if let WindowEvent::Focused(false) = event {
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(move |app| {
             // Register global shortcut.
             app.global_shortcut().register(toggle_shortcut)?;
@@ -112,12 +156,13 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        rect,
                         ..
                     } = event
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("menubar") {
-                            toggle_menubar_window(&window);
+                            toggle_menubar_at(&window, &rect);
                         }
                     }
                 })

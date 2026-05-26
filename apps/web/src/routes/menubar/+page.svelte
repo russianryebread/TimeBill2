@@ -131,6 +131,30 @@
     await load();
   }
 
+  /**
+   * "Open app" button — when running inside Tauri, show the main window
+   * (and hide the popover). In the pure web build (or fallback), navigate
+   * to /time as before.
+   */
+  async function openMainApp() {
+    if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined') {
+      try {
+        const { Window } = await import('@tauri-apps/api/window');
+        const main = await Window.getByLabel('main');
+        if (main) {
+          await main.show();
+          await main.setFocus();
+        }
+        const me = await Window.getByLabel('menubar');
+        if (me) await me.hide();
+        return;
+      } catch (err) {
+        console.warn('[menubar] failed to open main window', err);
+      }
+    }
+    window.location.href = '/time';
+  }
+
   onMount(() => {
     if (workspace.current) load();
   });
@@ -237,12 +261,31 @@
 
   <!-- Footer toolbar -->
   <footer class="flex items-center justify-between border-t border-slate-200 px-4 py-2">
-    <a href="/" class="text-xs text-slate-500 hover:text-brand-700">+ New</a>
-    <a href="/time" class="text-xs text-slate-500 hover:text-brand-700">⚙ Open app</a>
+    <button
+      type="button"
+      class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-brand-700"
+      onclick={openMainApp}
+      title="Add a new entry in the main app"
+    >
+      <span class="icon-[ph--plus]" aria-hidden="true"></span>
+      New
+    </button>
+    <button
+      type="button"
+      class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-brand-700"
+      onclick={openMainApp}
+      title="Open the full TimeBill app"
+    >
+      <span class="icon-[ph--arrow-square-out]" aria-hidden="true"></span>
+      Open app
+    </button>
   </footer>
 </div>
 
 <style>
+  /* Window is transparent + decorations:false in Tauri; let the desktop
+     show through outside the rounded card so the corners visually clip. */
+  :global(html),
   :global(body) {
     background: transparent !important;
   }
