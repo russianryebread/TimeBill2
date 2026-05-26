@@ -3,6 +3,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WebviewWindow,
 };
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 fn toggle_menubar_window(window: &WebviewWindow) {
     if let Ok(true) = window.is_visible() {
@@ -14,11 +15,35 @@ fn toggle_menubar_window(window: &WebviewWindow) {
 }
 
 pub fn run() {
+    // Cmd+Opt+T — for now this just toggles the menu bar window.
+    // Once the Tauri <-> Svelte bridge lands we'll emit a "timer-toggle"
+    // event here so the renderer can start/stop the most recent timer.
+    let toggle_shortcut = Shortcut::new(
+        Some(Modifiers::SUPER | Modifiers::ALT),
+        Code::KeyT,
+    );
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .setup(|app| {
-            // Build tray menu (right-click)
-            let show_main = MenuItem::with_id(app, "show_main", "Open TimeBill", true, None::<&str>)?;
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, shortcut, event| {
+                    if shortcut == &toggle_shortcut
+                        && event.state() == ShortcutState::Pressed
+                    {
+                        if let Some(window) = app.get_webview_window("menubar") {
+                            toggle_menubar_window(&window);
+                        }
+                    }
+                })
+                .build(),
+        )
+        .setup(move |app| {
+            // Register global shortcut.
+            app.global_shortcut().register(toggle_shortcut)?;
+
+            // Build tray menu (right-click).
+            let show_main =
+                MenuItem::with_id(app, "show_main", "Open TimeBill", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, Some("Cmd+Q"))?;
             let menu = Menu::with_items(app, &[&show_main, &quit])?;
 

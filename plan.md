@@ -453,3 +453,76 @@ link manually.
   3. Opens a confirm modal pre-filled with the client's email; user can
      override and add a CC. Submit calls `/send-email`.
   4. Status banner reflects the response.
+
+---
+
+## Phase 8 (in progress) — Tauri menu-bar scaffold rebuild
+
+The Tauri shell was regenerated to template state. Phase 8 reshapes
+it into the menu-bar timer app we actually want, on top of the
+existing SvelteKit static build. No native timer logic yet — this is
+the chassis other phases will hang features off.
+
+### 8.1 Two-window setup
+
+`apps/desktop/src-tauri/tauri.conf.json` declares two windows that both
+load the same frontend bundle (`apps/web/build` in production,
+`http://127.0.0.1:5173` in dev):
+
+- **`main`** — 1100x720, titled `TimeBill`, hidden at launch. Opened
+  from the tray menu's "Open TimeBill" item.
+- **`menubar`** — 380x520 at url `/menubar`. Decorations off,
+  transparent, always on top, skip taskbar, hidden + unfocused at
+  launch. The route exists at
+  `apps/web/src/routes/menubar/+page.svelte`.
+
+Bundle id `me.hoshor.timebill`, version `0.0.1`, targets
+`["app", "dmg"]`, macOS min `11.0`, icons reuse the duck-clock logo
+already in `src-tauri/icons/`.
+
+### 8.2 Tray + global shortcut (Rust side)
+
+`src-tauri/src/lib.rs`:
+
+- `TrayIconBuilder` with the default window icon as a template image so
+  macOS auto-tints it for light/dark menu bars.
+- Right-click menu: `Open TimeBill` (shows + focuses `main`), `Quit`
+  (Cmd+Q, `app.exit(0)`).
+- Left-click on the tray icon toggles the `menubar` window's
+  visibility — `is_visible()` → `hide()` else `show()` + `set_focus()`.
+  Uses `show_menu_on_left_click(false)` so left-click doesn't open the
+  right-click menu.
+- `tauri-plugin-global-shortcut` registers `Cmd+Opt+T`. For now its
+  handler reuses the same toggle. The intended long-term behavior is
+  start/stop the most recent timer via a Rust→JS event — that lands
+  with the bridge in 8.4.
+
+`Cargo.toml` deps: `tauri` (features `tray-icon`, `image-png`),
+`tauri-plugin-global-shortcut = "2"`, plus `serde` / `serde_json`.
+
+### 8.3 Capabilities
+
+`src-tauri/capabilities/default.json` applies to both windows and
+allows the subset of `core:window` permissions the toggle/show logic
+needs (`allow-show`, `allow-hide`, `allow-set-focus`,
+`allow-is-visible`, `allow-set-position`, `allow-set-size`,
+`allow-close`) plus `core:tray:default` and `core:webview:default`.
+
+### 8.4 Deferred
+
+- **Tauri↔Svelte bridge.** Once we have it, Cmd+Opt+T emits a
+  `timer-toggle` event the Svelte side listens for; the menu bar
+  window stops being the hotkey's job.
+- **Idle detection.** macOS input idle watcher → prompt to discard /
+  keep idle stretch mid-timer.
+- **Notifications.**
+- **Code signing + notarization** (Developer ID + notarytool).
+- **GitHub Releases updater** via `tauri-plugin-updater`.
+
+### 8.5 How to run it
+
+From repo root: `npm run dev:desktop` runs `tauri dev`, which spawns
+Vite on 5173 and opens the Mac app pointed at it. PocketBase still
+needs to run separately (`npm run dev:pb`). `npm run build:desktop`
+produces the `.app` + `.dmg` under
+`apps/desktop/src-tauri/target/release/bundle/`.
