@@ -896,3 +896,55 @@ the picker.
     Enter → row redraws to `3h 30m` (not `0h 30m`). Day total
     on the week strip moves accordingly. Symmetric: editing
     hours alone preserves minutes.
+
+## Phase 14 — Mac-app polish on the menubar popover
+
+Three small "this should feel like a native app" tweaks.
+
+### 14.1 Tray "recording" indicator
+
+`pushTrayTitle` in `timer.svelte.ts` now prefixes the elapsed time
+with a red-dot emoji (`\u{1F534}`, 🔴) whenever a timer is
+running, so the user can glance up at the macOS menu bar and see
+that they're tracking without parsing the text. Title becomes
+`🔴 5m` / `🔴 1h 23m`; clears to `''` when nothing runs. The
+emoji renders in color (no NSAttributedString plumbing on the
+Rust side) and macOS scales it down to the menu-bar text height.
+Non-animated by request.
+
+### 14.2 No text selection on labels
+
+The popover should feel like an app, not a web page. Added
+`user-select: none` (with `-webkit-user-select`) on `html`/`body`
+in the `/menubar` route's `<style>`, then opted `input` and
+`textarea` back in with `user-select: text`. Triple-click in the
+minutes editor and typing in the picker's search box still work;
+hovering over a row label no longer shows the I-beam cursor and
+shift-clicking can't select text.
+
+### 14.3 Pin the popover; only inner lists scroll
+
+`html`/`body` now also carry `overflow: hidden`,
+`overscroll-behavior: none`, `height: 100%`, and `margin: 0` so
+the popover chrome is fixed and never rubber-bands. The two
+inner scroll regions — the day's entries list and the picker's
+project list — get the `menubar-scroll` class which sets
+`overscroll-behavior: contain`, stopping wheel events from
+propagating to the parent (or the OS) once you hit the top/bottom.
+
+### 14.4 New test cases (extending §11.3)
+
+16. **Tray badge.** Start any timer → macOS menu bar reads
+    `🔴 0m`, transitions to `🔴 1m` after a minute. Stop → menu
+    bar text clears. (Tauri build only; the web build's
+    `pushTrayTitle` is a no-op.)
+17. **No text selection on labels.** Hover the project name on
+    any entry → cursor stays as the default arrow. Cmd-A on the
+    popover doesn't blue-select the label text. The minutes
+    input still accepts triple-click-to-replace, the picker
+    search still accepts typing.
+18. **No popover scroll / no overscroll bounce.** Wheel over the
+    header band or the footer toolbar → nothing scrolls. Wheel
+    over the entries list past the bottom → the list stops
+    at the bottom with no rubber-band that exposes the desktop
+    behind the popover.

@@ -423,7 +423,7 @@
   </div>
 
   <!-- Day list -->
-  <div class="flex-1 overflow-auto">
+  <div class="menubar-scroll flex-1 overflow-auto">
     {#if loading}
       <div class="p-8 text-center text-xs text-slate-500">Loading…</div>
     {:else if entriesForSelectedDay.length === 0}
@@ -589,7 +589,7 @@
             class="w-full rounded px-2 py-1 text-sm focus:outline-none"
           />
         </div>
-        <div class="max-h-64 overflow-auto py-1">
+        <div class="menubar-scroll max-h-64 overflow-auto py-1">
           {#if !projectsLoaded}
             <div class="px-3 py-4 text-center text-xs text-slate-500">Loading…</div>
           {:else if pickerFlat.length === 0}
@@ -638,6 +638,30 @@
   :global(html),
   :global(body) {
     background: transparent !important;
+    /* Native-app feel: no text-cursor on labels/buttons. Inputs opt back
+       in via the rule below. */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Pin the popover. The chrome itself never scrolls — only the entries
+       list and the picker dropdown's body do. Disables the rubber-band
+       bounce that would otherwise reveal the desktop behind the popover. */
+    overflow: hidden;
+    overscroll-behavior: none;
+    height: 100%;
+    margin: 0;
+  }
+  /* Restore standard text input behaviour (selection, caret) — without
+     this, triple-click-to-replace and search typing feel broken. */
+  :global(input),
+  :global(textarea) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  /* Any inner scroll container must contain its overscroll so the wheel
+     event doesn't propagate to the parent (and the rubber band doesn't
+     bounce the whole popover). */
+  :global(.menubar-scroll) {
+    overscroll-behavior: contain;
   }
   /* Hide the spin buttons on the inline number inputs (they're tiny). */
   input[type='number']::-webkit-inner-spin-button,
