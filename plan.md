@@ -529,6 +529,75 @@ produces the `.app` + `.dmg` under
 
 ---
 
+## Phase 9 (in progress) — Toggl Track import
+
+Second competitor importer, sharing the `/settings/import` UI shell with
+the Harvest one. Same dedup-by-name semantics; parser is swapped based on
+the CSV header. (Numbered 9 because Phase 8 is the Tauri scaffold above.)
+
+### 9.1 Format auto-detection
+
+- New helper `detectImportFormat(text)` in `apps/web/src/lib/toggl.ts`
+  inspects the first CSV row.
+  - `Start time` / `End time` (or `Start date` + `Duration`) → Toggl.
+  - `Date` + `Hours` → Harvest.
+  - Both or neither → `'unknown'`; the UI shows a Harvest/Toggl dropdown
+    and re-parses on selection.
+- The preview screen shows a chip "Detected: Harvest" or
+  "Detected: Toggl Track" so the user can confirm the right parser ran.
+
+### 9.2 Shared CSV helper
+
+- The RFC-4180-ish row splitter that lived inside `harvest.ts` moved to
+  `apps/web/src/lib/csv.ts` as `splitCsvRow(line)`. Both parsers import
+  it, so we don't carry two copies.
+
+### 9.3 Toggl Track parser (`apps/web/src/lib/toggl.ts`)
+
+Handles Toggl's "Detailed report" CSV export. Columns we care about
+(case-insensitive):
+
+```
+User, Email, Client, Project, Task, Description, Billable,
+Start date, Start time, End date, End time, Duration,
+Tags, Amount (USD), Rate
+```
+
+- `parseTogglCsv(text)` returns `{ rows, errors, headerMap }`. Row shape
+  is the existing `HarvestRow` (so `buildPreview` works unchanged) plus
+  required `startISO` / `endISO` strings — Toggl gives real timestamps,
+  so we plumb them through instead of synthesizing.
+- `Billable` is `Yes` / `No`.
+- `Duration` is `HH:MM:SS` (with `HH:MM` and decimal fallbacks).
+- Rate derivation order: explicit `Rate` column → `Amount (USD) / hours`
+  if rate is missing but amount is present → `0`.
+- **Client required.** Toggl allows projects without clients; TimeBill
+  does not. Rows with empty `Client` are skipped and surfaced in the
+  parse errors with: *"Row has no Client — TimeBill requires every
+  project to have a client. Set one in Toggl and re-export."*
+
+### 9.4 Insertion path
+
+- **Toggl path:** uses each row's `startISO` / `endISO` verbatim when
+  creating `time_entries`. No 09:00 synthesis.
+- **Harvest path:** unchanged (groups by date, starts at 09:00, advances
+  per row).
+- New clients, projects (with rate seeded from the first row's
+  rate/derived rate), and activity types are still deduped by name, same
+  as Harvest.
+
+### 9.5 Sharp edges noticed in Toggl's export
+
+- Toggl allows clientless projects → skip + report, don't guess.
+- `Duration` is the source of truth in Toggl's UI, but `Amount` is the
+  *displayed* total; for derived rates we trust `Amount / hours`. Beware
+  rounding when both are populated and disagree.
+- `Start time` / `End time` are local-time strings with no timezone in
+  the CSV — we insert them as naive ISO local strings and let the rest
+  of the app treat them like every other local-time entry.
+
+---
+
 ## Phase 10 (in progress) — Quarterly self-employment tax estimator
 
 The plan called for this as "Phase 8," but Phases 8 (Tauri scaffold) and 9
