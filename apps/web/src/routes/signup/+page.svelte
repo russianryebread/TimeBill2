@@ -27,7 +27,7 @@
 <div class="flex min-h-screen items-center justify-center bg-slate-50 px-6">
   <div class="w-full max-w-sm">
     <div class="mb-6 flex items-center justify-center gap-2">
-      <span class="inline-block h-9 w-9 rounded-md bg-brand-800"></span>
+      <img src="/logo.png" alt="" class="h-10 w-10 rounded-md" />
       <span class="text-xl font-semibold">TimeBill</span>
     </div>
     <form

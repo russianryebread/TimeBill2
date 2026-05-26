@@ -9,6 +9,10 @@ apps/web/build/
 apps/web/.svelte-kit/
 apps/desktop/src-tauri/target/
 
+# Force-include Tauri icons (otherwise caught by global "Icon?" rule).
+!apps/desktop/src-tauri/icons/
+!apps/desktop/src-tauri/icons/*
+
 # PocketBase: keep migrations + hooks in git; ignore everything else
 pocketbase/pocketbase
 pocketbase/pb_data/

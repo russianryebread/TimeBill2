@@ -30,7 +30,7 @@
 <div class="flex h-screen overflow-hidden bg-slate-50">
   <aside class="sticky top-0 flex h-screen w-56 flex-col border-r border-slate-200 bg-white">
     <div class="flex items-center gap-2 px-5 py-4">
-      <span class="inline-block h-8 w-8 rounded-md bg-brand-800"></span>
+      <img src="/logo.png" alt="" class="h-8 w-8 rounded-md" />
       <span class="text-lg font-semibold tracking-tight text-brand-800">TimeBill</span>
     </div>
 

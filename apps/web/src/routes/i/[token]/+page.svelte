@@ -87,10 +87,13 @@
     {:else}
       <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <header class="bg-brand-800 px-8 py-6 text-white">
-          <div class="flex items-end justify-between">
-            <div>
-              <div class="text-xs uppercase tracking-wider text-brand-200">Invoice</div>
-              <div class="font-mono text-2xl font-bold">{data.invoice.number}</div>
+          <div class="flex items-end justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <img src="/logo.png" alt="" class="h-12 w-12 shrink-0 rounded-md bg-white p-1" />
+              <div>
+                <div class="text-xs uppercase tracking-wider text-brand-200">Invoice</div>
+                <div class="font-mono text-2xl font-bold">{data.invoice.number}</div>
+              </div>
             </div>
             <div class="text-right text-sm">
               <div class="text-brand-200">From</div>
