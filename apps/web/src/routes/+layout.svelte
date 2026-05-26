@@ -3,7 +3,9 @@
   import { auth } from '$lib/auth.svelte';
   import { workspace } from '$lib/workspace.svelte';
   import { timer } from '$lib/timer.svelte';
+  import { idle } from '$lib/idle.svelte';
   import AppShell from '$lib/components/AppShell.svelte';
+  import IdleReturnModal from '$lib/components/IdleReturnModal.svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { onMount, onDestroy } from 'svelte';
@@ -41,10 +43,14 @@
 
   onMount(() => {
     if (auth.isLoggedIn) workspace.load();
+    // Hooks up the Tauri `idle-detected` event listener — silently no-ops
+    // outside the Tauri shell, so safe to call in the web build.
+    idle.init();
   });
 
   onDestroy(() => {
     timer.dispose();
+    idle.dispose();
   });
 </script>
 
@@ -53,3 +59,6 @@
 {:else}
   <AppShell>{@render children()}</AppShell>
 {/if}
+
+<!-- Surfaced everywhere (including the chromeless /menubar route). -->
+<IdleReturnModal />

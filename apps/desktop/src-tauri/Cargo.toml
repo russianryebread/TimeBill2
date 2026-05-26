@@ -18,3 +18,6 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Cross-platform "how long since the user last touched the input devices?"
+# (macOS uses IOKit under the hood). Used by the idle watcher thread.
+user-idle = "0.6"
