@@ -958,3 +958,34 @@ propagating to the parent (or the OS) once you hit the top/bottom.
     over the entries list past the bottom → the list stops
     at the bottom with no rubber-band that exposes the desktop
     behind the popover.
+
+## Phase 15 — Reports: GitHub-style year heatmap
+
+The previous heatmap was a 6×7 monthly calendar grid where each cell
+was `aspect-square` (~80–100 px wide on a desktop viewport), with
+the day number and decimal-hours stamped inline. It dominated the
+page and used the brand teal/cyan ramp which read oddly against
+the rest of the dashboard.
+
+Replaced with a GitHub-contributions-style year grid:
+
+- 7 rows (Mon→Sun) × ~52 columns (one per week), 11 px cells with
+  2 px gaps. Built off `yearEntries` (already loaded for CSV
+  exports), so no extra query.
+- Grid spans the Monday on/before Jan 1 through the Sunday on/after
+  Dec 31; cells outside the selected year still render but at 30 %
+  opacity so the grid stays a clean rectangle.
+- Month abbreviations sit above the first column of each month;
+  `Mon` / `Wed` / `Fri` labels sit in the left gutter.
+- Color ramp is the familiar GitHub greens
+  (`#ebedf0` empty → `#9be9a8` → `#40c463` → `#30a14e` → `#216e39`),
+  picked from **fixed daily-hour thresholds** (0 / <2 / <4 / <6 / ≥6 h)
+  so the same shade always means the same workload — not "as
+  intense as the busiest day of the month."
+- Hours are no longer printed inside the cell; each cell has a
+  `title` attribute like `Thu, May 21, 2026 — 3:15 tracked` for
+  native hover tooltips.
+- The legend (`less ▢▢▢▢▢ more`) was updated to the new palette.
+
+The "Active days" summary card still scopes to the selected month
+via a derived `activeDaysInMonth` over the new heatmap data.

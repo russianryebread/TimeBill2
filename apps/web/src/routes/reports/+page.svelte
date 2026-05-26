@@ -77,39 +77,81 @@
       .reduce((s, e) => s + Math.round((e.rate_cents_snapshot! * durationMs(e)) / 3_600_000), 0)
   );
 
-  type DayCell = { date: Date; ms: number; inMonth: boolean };
-  let calendar = $derived.by(() => {
-    // Build a 6-row × 7-col Monday-start grid covering the selected month
-    const first = startOfMonth(year, month);
-    const last = new Date(year, month + 1, 0);
-    const offset = (first.getDay() + 6) % 7; // 0 = Mon
+  type DayCell = { date: Date; ms: number; inYear: boolean };
+
+  // ----- GitHub-style year heatmap -----
+  //
+  // 7 rows (Mon→Sun, top→bottom) × however-many weeks (~52-54) fit the
+  // selected year. The grid starts on the Monday on/before Jan 1 and
+  // ends on the Sunday on/after Dec 31 so each column is a complete week.
+  // Cells outside the year are still rendered (greyed) so the grid is
+  // a clean rectangle.
+  let yearHeatmap = $derived.by(() => {
+    const totals = new Map<string, number>(); // yyyy-mm-dd → ms
+    for (const e of yearEntries) {
+      const d = new Date(e.started_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      totals.set(key, (totals.get(key) || 0) + durationMs(e));
+    }
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31);
+    const startOffset = (yearStart.getDay() + 6) % 7; // 0 = Mon
+    const endOffset = (7 - (((yearEnd.getDay() + 6) % 7) + 1)) % 7;
+    const gridStart = new Date(year, 0, 1 - startOffset);
+    const gridEnd = new Date(year, 11, 31 + endOffset);
+    const days = Math.round((gridEnd.getTime() - gridStart.getTime()) / 86_400_000) + 1;
     const cells: DayCell[] = [];
-    const totalCells = Math.ceil((offset + last.getDate()) / 7) * 7;
-    for (let i = 0; i < totalCells; i++) {
-      const d = new Date(year, month, i - offset + 1);
-      const ms = entries
-        .filter((e) => sameDay(new Date(e.started_at), d))
-        .reduce((s, e) => s + durationMs(e), 0);
-      cells.push({ date: d, ms, inMonth: d.getMonth() === month });
+    for (let i = 0; i < days; i++) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      cells.push({ date: d, ms: totals.get(key) || 0, inYear: d.getFullYear() === year });
     }
     return cells;
   });
 
-  let maxDailyMs = $derived(Math.max(0, ...calendar.map((c) => c.ms)));
+  let heatmapWeeks = $derived(yearHeatmap.length / 7);
 
-  function heatmapShade(ms: number): string {
-    if (ms <= 0 || maxDailyMs <= 0) return 'bg-slate-100';
-    const pct = ms / maxDailyMs;
-    if (pct < 0.2) return 'bg-brand-100';
-    if (pct < 0.4) return 'bg-brand-200';
-    if (pct < 0.6) return 'bg-brand-300';
-    if (pct < 0.8) return 'bg-brand-400';
-    return 'bg-brand-800';
+  // GitHub-style green ramp (light → dark). Fixed thresholds instead of
+  // percent-of-max so the colors mean the same thing day to day:
+  // 0h, <2h, <4h, <6h, ≥6h.
+  function heatmapColor(ms: number): string {
+    if (ms <= 0) return '#ebedf0';
+    const h = ms / 3_600_000;
+    if (h < 2) return '#9be9a8';
+    if (h < 4) return '#40c463';
+    if (h < 6) return '#30a14e';
+    return '#216e39';
   }
 
-  function heatmapTextColor(ms: number): string {
-    if (ms <= 0 || maxDailyMs <= 0) return 'text-slate-400';
-    return ms / maxDailyMs > 0.6 ? 'text-white' : 'text-slate-700';
+  // Month labels above the heatmap — show the abbreviation in the column
+  // where the first cell of each month lands. Only label a month if it
+  // has at least 3 weeks of room to the next (avoids overlap on partial
+  // months at the very start of the grid).
+  let heatmapMonthLabels = $derived.by(() => {
+    const seen = new Set<number>();
+    const labels: { month: number; col: number }[] = [];
+    for (let i = 0; i < yearHeatmap.length; i++) {
+      const c = yearHeatmap[i]!;
+      if (!c.inYear) continue;
+      const m = c.date.getMonth();
+      if (seen.has(m)) continue;
+      seen.add(m);
+      labels.push({ month: m, col: Math.floor(i / 7) });
+    }
+    return labels;
+  });
+
+  // Used by the "Active days" summary card — count days in the selected
+  // month that had any tracked time.
+  let activeDaysInMonth = $derived(
+    yearHeatmap.filter(
+      (c) => c.inYear && c.date.getMonth() === month && c.ms > 0
+    ).length
+  );
+
+  function shortDate(d: Date): string {
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   type ProjBreak = {
@@ -447,44 +489,63 @@
     <div class="rounded-xl border border-slate-200 bg-white p-5">
       <div class="text-xs uppercase tracking-wider text-slate-500">Active days</div>
       <div class="mt-1 font-mono text-2xl font-semibold text-brand-800">
-        {calendar.filter((c) => c.inMonth && c.ms > 0).length}
+        {activeDaysInMonth}
       </div>
     </div>
   </section>
 
-  <!-- Heatmap -->
+  <!-- Heatmap (GitHub-style year contributions) -->
   <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
     <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-sm font-medium text-slate-700">Daily hours · {monthLabel()}</h2>
+      <h2 class="text-sm font-medium text-slate-700">Daily hours · {year}</h2>
       <div class="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500">
         <span>less</span>
-        <span class="h-3 w-3 rounded bg-slate-100"></span>
-        <span class="h-3 w-3 rounded bg-brand-100"></span>
-        <span class="h-3 w-3 rounded bg-brand-200"></span>
-        <span class="h-3 w-3 rounded bg-brand-300"></span>
-        <span class="h-3 w-3 rounded bg-brand-400"></span>
-        <span class="h-3 w-3 rounded bg-brand-800"></span>
+        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#ebedf0"></span>
+        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#9be9a8"></span>
+        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#40c463"></span>
+        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#30a14e"></span>
+        <span class="h-2.5 w-2.5 rounded-sm" style:background-color="#216e39"></span>
         <span>more</span>
       </div>
     </div>
-    <div class="grid grid-cols-7 gap-1.5">
-      {#each WEEK_LABELS as w}
-        <div class="text-center text-[10px] uppercase tracking-wider text-slate-500">{w}</div>
-      {/each}
-      {#each calendar as cell}
-        <div
-          class="flex aspect-square flex-col items-center justify-center rounded text-[10px] font-medium
-            {heatmapShade(cell.ms)}
-            {heatmapTextColor(cell.ms)}
-            {cell.inMonth ? '' : 'opacity-30'}"
-          title="{cell.date.toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'})} — {formatHours(cell.ms)}"
-        >
-          <span>{cell.date.getDate()}</span>
-          {#if cell.ms > 0 && cell.inMonth}
-            <span class="font-mono text-[9px]">{formatHours(cell.ms)}</span>
-          {/if}
+    <div class="overflow-x-auto">
+      <div class="inline-flex gap-2">
+        <!-- Mon/Wed/Fri labels in the left margin -->
+        <div class="grid grid-rows-7 gap-[2px] pt-[14px] text-[9px] text-slate-400">
+          <span></span>
+          <span>Mon</span>
+          <span></span>
+          <span>Wed</span>
+          <span></span>
+          <span>Fri</span>
+          <span></span>
         </div>
-      {/each}
+        <div>
+          <!-- Month labels above the grid -->
+          <div
+            class="relative mb-[2px] h-3 text-[9px] uppercase tracking-wider text-slate-500"
+            style:width="{heatmapWeeks * 13}px"
+          >
+            {#each heatmapMonthLabels as lbl}
+              <span class="absolute" style:left="{lbl.col * 13}px">{MONTHS[lbl.month]}</span>
+            {/each}
+          </div>
+          <!-- The cells: 7 rows × N columns, column-major fill order. -->
+          <div
+            class="grid grid-rows-7 gap-[2px]"
+            style:grid-auto-flow="column"
+            style:grid-auto-columns="11px"
+          >
+            {#each yearHeatmap as cell}
+              <span
+                class="h-[11px] w-[11px] rounded-sm {cell.inYear ? '' : 'opacity-30'}"
+                style:background-color={heatmapColor(cell.ms)}
+                title={`${shortDate(cell.date)} — ${cell.ms > 0 ? formatHours(cell.ms) + ' tracked' : 'no time tracked'}`}
+              ></span>
+            {/each}
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
