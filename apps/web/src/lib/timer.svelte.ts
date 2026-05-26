@@ -113,7 +113,7 @@ class TimerState {
 
   async start(opts: { projectId: string; taskId?: string; description?: string }) {
     if (!workspace.current) throw new Error('No workspace');
-    return pb.collection('time_entries').create({
+    const created = await pb.collection('time_entries').create({
       workspace: workspace.current.id,
       project: opts.projectId,
       task: opts.taskId ?? null,
@@ -121,14 +121,41 @@ class TimerState {
       ended_at: null,
       description: opts.description ?? '',
       billable: true
-    });
+    }, { expand: 'project,project.client,task' });
+    // Update local state synchronously — the realtime subscription will also
+    // fire and re-sync, but the UI shouldn't wait for the round trip.
+    this.running = created as unknown as TimeEntry;
+    this.now = Date.now();
+    this.pushTrayTitle();
+    return created;
   }
 
-  async stop() {
-    if (!this.running) return;
-    await pb.collection('time_entries').update(this.running.id, {
-      ended_at: new Date().toISOString()
-    });
+  /**
+   * Stop a specific entry (or whichever timer is currently running). We
+   * clear `this.running` optimistically so the UI updates immediately — the
+   * realtime subscription will re-sync afterwards. Relying solely on the
+   * subscription left the banner stuck whenever the websocket lagged or
+   * was reconnecting.
+   */
+  async stop(entryId?: string) {
+    const id = entryId ?? this.running?.id;
+    if (!id) return;
+    // Optimistic local clear first — guarantees the UI updates even if the
+    // realtime subscription is slow/disconnected.
+    if (this.running?.id === id) {
+      this.running = null;
+      this.trayTitleLast = '__force__';
+      this.pushTrayTitle();
+    }
+    try {
+      await pb.collection('time_entries').update(id, {
+        ended_at: new Date().toISOString()
+      });
+    } catch (err) {
+      // Revert on failure so the user can retry.
+      await this.loadRunning();
+      throw err;
+    }
   }
 }
 

@@ -3,8 +3,7 @@
   import { pb, toPbDate } from '$lib/pb';
   import { workspace } from '$lib/workspace.svelte';
   import { timer } from '$lib/timer.svelte';
-  import { api } from '$lib/api';
-  import { formatHours, formatHMS } from '@timebill/shared/money';
+  import { formatHours } from '@timebill/shared/money';
 
   type Entry = {
     id: string;
@@ -12,6 +11,8 @@
     task: string;
     started_at: string;
     ended_at: string | null;
+    description: string;
+    invoice: string;
     expand?: {
       project?: { id: string; name: string; color: string; client: string; expand?: { client?: { name: string } } };
       task?: { id: string; name: string };
@@ -56,11 +57,9 @@
     );
   }
 
-  function durationMs(e: Entry): number {
-    const ms = e.ended_at
-      ? new Date(e.ended_at).getTime() - new Date(e.started_at).getTime()
-      : Date.now() - new Date(e.started_at).getTime();
-    return Math.max(0, ms);
+  function durationMs(e: Entry, nowMs: number): number {
+    const end = e.ended_at ? new Date(e.ended_at).getTime() : nowMs;
+    return Math.max(0, end - new Date(e.started_at).getTime());
   }
 
   async function load() {
@@ -79,38 +78,23 @@
     }
   }
 
+  // Use timer.now so totals tick as the active timer runs.
   let dayTotals = $derived(
     weekDays.map((day) =>
       entries
         .filter((e) => sameDay(new Date(e.started_at), day))
-        .reduce((sum, e) => sum + durationMs(e), 0)
+        .reduce((sum, e) => sum + durationMs(e, timer.now), 0)
     )
   );
 
-  type GroupProject = NonNullable<NonNullable<Entry['expand']>['project']>;
-  type GroupTask = NonNullable<NonNullable<Entry['expand']>['task']>;
-  type Group = {
-    project: GroupProject | undefined;
-    task: GroupTask | undefined;
-    totalMs: number;
-  };
-
-  let selectedDayGroups = $derived.by(() => {
-    const m = new Map<string, Group>();
-    for (const e of entries.filter((e) => sameDay(new Date(e.started_at), selectedDay))) {
-      const k = `${e.project}|${e.task ?? ''}`;
-      const existing = m.get(k);
-      if (existing) {
-        existing.totalMs += durationMs(e);
-      } else {
-        m.set(k, {
-          project: e.expand?.project,
-          task: e.expand?.task,
-          totalMs: durationMs(e)
-        });
-      }
-    }
-    return Array.from(m.values()).sort((a, b) => b.totalMs - a.totalMs);
+  // Entries on the selected day, with the running timer (if any and started
+  // on the selected day) at the top. The active row gets a green highlight;
+  // every other row is rendered with the same client/project layout.
+  let entriesForSelectedDay = $derived.by(() => {
+    const list = entries
+      .filter((e) => sameDay(new Date(e.started_at), selectedDay))
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+    return list;
   });
 
   function fmtDate(d: Date): string {
@@ -121,21 +105,82 @@
     return d.toLocaleDateString('en-US', { weekday: 'narrow' });
   }
 
-  async function quickStart(projectId: string, taskId?: string) {
-    await timer.start({ projectId, taskId });
+  // ---- Inline hours/minutes editor ----
+  // Editing keys: when the user types in a row's hours/minutes inputs we keep
+  // the draft in a per-id map until they blur or press Enter, then we push the
+  // change to PocketBase by adjusting ended_at (or started_at for the running
+  // entry — shifting it backwards extends the timer).
+  let drafts = $state<Record<string, { h: string; m: string }>>({});
+
+  function hmFromMs(ms: number): { h: number; m: number } {
+    const total = Math.max(0, Math.floor(ms / 60_000));
+    return { h: Math.floor(total / 60), m: total % 60 };
+  }
+
+  function getDraft(e: Entry): { h: string; m: string } {
+    const existing = drafts[e.id];
+    if (existing) return existing;
+    const { h, m } = hmFromMs(durationMs(e, timer.now));
+    return { h: String(h), m: String(m).padStart(2, '0') };
+  }
+
+  function setDraft(id: string, field: 'h' | 'm', value: string) {
+    const current = drafts[id] ?? { h: '0', m: '0' };
+    drafts[id] = { ...current, [field]: value };
+  }
+
+  async function commitDraft(e: Entry) {
+    const d = drafts[e.id];
+    if (!d) return;
+    const h = Math.max(0, parseInt(d.h || '0', 10) || 0);
+    const m = Math.max(0, parseInt(d.m || '0', 10) || 0);
+    const newMs = (h * 60 + m) * 60_000;
+    const startMs = new Date(e.started_at).getTime();
+    try {
+      if (!e.ended_at) {
+        // Active timer — keep ended_at empty, shift started_at so elapsed = newMs.
+        const newStart = new Date(Date.now() - newMs);
+        await pb.collection('time_entries').update(e.id, {
+          started_at: newStart.toISOString()
+        });
+      } else {
+        await pb.collection('time_entries').update(e.id, {
+          ended_at: new Date(startMs + newMs).toISOString()
+        });
+      }
+      delete drafts[e.id];
+      await load();
+    } catch (err) {
+      console.warn('[menubar] failed to update duration', err);
+    }
+  }
+
+  function onKeyDown(ev: KeyboardEvent, e: Entry) {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      (ev.target as HTMLInputElement).blur();
+    }
+    if (ev.key === 'Escape') {
+      delete drafts[e.id];
+      (ev.target as HTMLInputElement).blur();
+    }
+  }
+
+  async function toggleEntry(e: Entry) {
+    if (!e.ended_at) {
+      // It's the running one — stop it.
+      await timer.stop(e.id);
+    } else {
+      // Resume: start a new entry on the same project/task.
+      await timer.start({
+        projectId: e.project,
+        taskId: e.task || undefined,
+        description: e.description
+      });
+    }
     await load();
   }
 
-  async function stop() {
-    await timer.stop();
-    await load();
-  }
-
-  /**
-   * "Open app" button — when running inside Tauri, show the main window
-   * (and hide the popover). In the pure web build (or fallback), navigate
-   * to /time as before.
-   */
   async function openMainApp() {
     if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined') {
       try {
@@ -155,24 +200,15 @@
     window.location.href = '/time';
   }
 
-  /**
-   * "+ New" button — starts a fresh timer on the most-recently-used project
-   * (and task). Falls back to opening the main app's /time page if we have
-   * no recent activity to seed from.
-   */
   async function newEntry() {
-    if (timer.running) {
-      // A timer is already running; opening the main app is a safer action
-      // than silently auto-stopping/starting a different one from a tray click.
-      return openMainApp();
-    }
-    // Pull the most recent entry across the whole workspace (any day, any
-    // project) to seed project+task; fall back to today's groups for speed.
+    if (timer.running) return openMainApp();
+    // Seed from the most recent entry on the selected day, or any recent entry.
     let seedProject: string | undefined;
     let seedTask: string | undefined;
-    if (selectedDayGroups.length > 0 && selectedDayGroups[0]?.project) {
-      seedProject = selectedDayGroups[0].project.id;
-      seedTask = selectedDayGroups[0].task?.id;
+    if (entriesForSelectedDay.length > 0) {
+      const last = entriesForSelectedDay[0]!;
+      seedProject = last.project;
+      seedTask = last.task || undefined;
     } else if (workspace.current) {
       try {
         const recent = await pb.collection('time_entries').getList(1, 1, {
@@ -199,10 +235,20 @@
     void weekOffset;
     if (workspace.current) load();
   });
+
+  // Re-load whenever the realtime running timer changes (start/stop from
+  // elsewhere) — the live `timer.running` is updated by the timer store's
+  // subscription, so reacting to its id keeps this view in sync without
+  // every-second reloads.
+  $effect(() => {
+    void timer.running?.id;
+    void timer.running?.ended_at;
+    if (workspace.current) load();
+  });
 </script>
 
 <div class="flex h-screen w-screen flex-col overflow-hidden bg-white">
-  <!-- Orange-style banded header (themed) -->
+  <!-- Banded header -->
   <header class="bg-brand-800 px-4 py-3 text-white">
     <div class="flex items-center justify-between text-sm">
       <span class="font-medium">{fmtDate(selectedDay)}</span>
@@ -241,53 +287,95 @@
     {/each}
   </div>
 
-  <!-- Running banner -->
-  {#if timer.running}
-    <div class="flex items-center gap-2 border-b border-brand-400 bg-brand-50 px-4 py-2">
-      <span class="h-2 w-2 animate-pulse rounded-full bg-brand-400"></span>
-      <span class="flex-1 truncate text-xs text-brand-800">
-        {timer.running.expand?.project?.name ?? 'Project'}
-      </span>
-      <span class="font-mono text-sm text-brand-800">{formatHMS(timer.elapsedMs)}</span>
-      <button class="rounded bg-brand-800 px-2 py-0.5 text-xs font-medium text-white" onclick={stop}>
-        Stop
-      </button>
-    </div>
-  {/if}
-
   <!-- Day list -->
   <div class="flex-1 overflow-auto">
     {#if loading}
       <div class="p-8 text-center text-xs text-slate-500">Loading…</div>
-    {:else if selectedDayGroups.length === 0}
+    {:else if entriesForSelectedDay.length === 0}
       <div class="p-12 text-center text-xs text-slate-500">Nothing tracked today.</div>
     {:else}
       <ul>
-        {#each selectedDayGroups as g}
-          <li class="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0">
-            <span
-              class="h-2.5 w-2.5 shrink-0 rounded-full"
-              style:background-color={g.project?.color ?? '#94a3b8'}
-            ></span>
+        {#each entriesForSelectedDay as e (e.id)}
+          {@const isRunning = !e.ended_at}
+          {@const isLocked = !!e.invoice}
+          {@const d = getDraft(e)}
+          <li
+            class="flex items-center gap-3 border-b border-slate-100 px-3 py-2 last:border-0
+              {isRunning ? 'bg-brand-50' : ''}"
+          >
+            <!-- Project color dot, or spinning clock for the active entry -->
+            {#if isRunning}
+              <span
+                class="icon-[ph--clock-clockwise-duotone] h-4 w-4 shrink-0 animate-spin text-brand-500"
+                style="animation-duration: 3s;"
+                aria-label="Timer running"
+              ></span>
+            {:else}
+              <span
+                class="h-2.5 w-2.5 shrink-0 rounded-full"
+                style:background-color={e.expand?.project?.color ?? '#94a3b8'}
+                aria-hidden="true"
+              ></span>
+            {/if}
+
+            <!-- Client / project / task -->
             <div class="min-w-0 flex-1">
               <div class="truncate text-[10px] text-slate-500">
-                {g.project?.expand?.client?.name ?? ''}
+                {e.expand?.project?.expand?.client?.name ?? ''}
               </div>
-              <div class="truncate text-sm font-medium text-slate-900">
-                {g.project?.name ?? '—'}
+              <div class="truncate text-sm font-medium {isRunning ? 'text-brand-800' : 'text-slate-900'}">
+                {e.expand?.project?.name ?? '—'}
               </div>
-              {#if g.task}
-                <div class="truncate text-xs text-slate-500">{g.task.name}</div>
+              {#if e.expand?.task}
+                <div class="truncate text-[11px] text-slate-500">{e.expand.task.name}</div>
               {/if}
             </div>
-            <div class="font-mono text-sm text-slate-800">{formatHours(g.totalMs)}</div>
+
+            <!-- Hours / minutes editor -->
+            <div class="flex items-center gap-0.5 font-mono text-sm">
+              <input
+                type="number"
+                min="0"
+                max="99"
+                disabled={isLocked}
+                value={d.h}
+                oninput={(ev) => setDraft(e.id, 'h', (ev.currentTarget as HTMLInputElement).value)}
+                onblur={() => commitDraft(e)}
+                onkeydown={(ev) => onKeyDown(ev, e)}
+                class="w-9 rounded border border-transparent bg-transparent px-1 py-0.5 text-right text-slate-800 hover:border-slate-200 focus:border-brand-500 focus:bg-white focus:outline-none disabled:text-slate-500"
+                aria-label="Hours"
+              />
+              <span class="text-slate-400">h</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                disabled={isLocked}
+                value={d.m}
+                oninput={(ev) => setDraft(e.id, 'm', (ev.currentTarget as HTMLInputElement).value)}
+                onblur={() => commitDraft(e)}
+                onkeydown={(ev) => onKeyDown(ev, e)}
+                class="w-9 rounded border border-transparent bg-transparent px-1 py-0.5 text-right text-slate-800 hover:border-slate-200 focus:border-brand-500 focus:bg-white focus:outline-none disabled:text-slate-500"
+                aria-label="Minutes"
+              />
+              <span class="text-slate-400">m</span>
+            </div>
+
+            <!-- Play / Pause -->
             <button
-              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-brand-700 hover:border-brand-500 hover:bg-brand-50"
-              disabled={!!timer.running}
-              onclick={() => quickStart(g.project?.id ?? '', g.task?.id)}
-              aria-label="Start timer"
+              type="button"
+              disabled={isLocked || (!isRunning && !!timer.running)}
+              onclick={() => toggleEntry(e)}
+              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
+                {isRunning
+                  ? 'bg-brand-500 text-white hover:bg-brand-600'
+                  : 'border border-slate-300 text-brand-700 hover:border-brand-500 hover:bg-brand-50 disabled:opacity-30'}"
+              aria-label={isRunning ? 'Pause timer' : 'Start timer'}
             >
-              <span class="icon-[ph--play-fill]" aria-hidden="true"></span>
+              <span
+                class={isRunning ? 'icon-[ph--pause-fill]' : 'icon-[ph--play-fill]'}
+                aria-hidden="true"
+              ></span>
             </button>
           </li>
         {/each}
@@ -300,8 +388,8 @@
     <button
       type="button"
       class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-brand-700"
-      onclick={openMainApp}
-      title="Add a new entry in the main app"
+      onclick={newEntry}
+      title="Start a new timer using your last project"
     >
       <span class="icon-[ph--plus]" aria-hidden="true"></span>
       New
@@ -324,5 +412,15 @@
   :global(html),
   :global(body) {
     background: transparent !important;
+  }
+  /* Hide the spin buttons on the inline number inputs (they're tiny). */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
 </style>

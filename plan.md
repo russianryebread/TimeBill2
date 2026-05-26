@@ -678,3 +678,81 @@ literal Tailwind class `icon-[ph--calculator-duotone]`.
 - No state income tax — the `state` field on `tax_settings` is
   collected but not yet used in the math.
 - Additional 0.9% Medicare surtax on high earners not modeled.
+
+## Phase 11 — Menubar timer list + stop-bug fix
+
+### 11.1 Stop-timer bug
+
+Symptom: pressing **Stop** on a running timer did not always clear the
+running banner. Root cause: the timer store cleared `running` only when
+the PocketBase realtime subscription delivered an UPDATE event. If the
+websocket lagged, reconnected, or the event was dropped, the local
+state stayed pointed at the (now-stopped) entry forever.
+
+Fix (`apps/web/src/lib/timer.svelte.ts`):
+
+- `stop(entryId?)` now accepts an optional entry id (so callers can
+  stop any specific row, not just `this.running`) and clears
+  `this.running = null` **before** awaiting the network round trip.
+- Tray title is force-refreshed synchronously after the optimistic
+  clear so the menubar icon updates immediately.
+- On a failed update the store calls `loadRunning()` to re-sync from
+  the server and rethrows so the caller can show the error.
+- `start()` also writes the created entry into `this.running`
+  synchronously, with `expand: 'project,project.client,task'` so the
+  active row has full context without waiting for the next realtime
+  poll.
+
+### 11.2 Menubar popover rework (`apps/web/src/routes/menubar/+page.svelte`)
+
+- One unified list per day. The active timer is now just another row
+  in the list (not a separate banner) and uses the same
+  client / project / task layout as historic rows, with a
+  `bg-brand-50` highlight and `text-brand-800` project name.
+- A spinning Phosphor `ph--clock-clockwise-duotone` icon replaces the
+  project-color dot on the active row (`animate-spin`, 3-second
+  rotation for a calm beat — not a frantic one).
+- Each row has a circular play/pause toggle:
+  - inactive rows → `ph--play-fill` on a bordered button; clicking
+    starts a new timer on that row's project + task. Disabled while
+    any other timer is running (avoids accidental swap).
+  - active row → `ph--pause-fill` on a filled brand-500 button;
+    clicking stops that specific entry via the new `timer.stop(id)`.
+- The label "Stop" is gone from the popover — buttons are icon-only.
+- Inline `Xh Ym` editor on every row. Editing minutes/hours commits on
+  blur (or Enter; Escape cancels). For completed entries this adjusts
+  `ended_at`; for the running entry it shifts `started_at` backwards
+  so the elapsed clock matches the typed total.
+- Day totals on the week strip tick in real time using `timer.now`.
+
+### 11.3 Test cases (must pass when verifying the popover)
+
+When changing anything in the menubar or timer store, exercise the
+following flows in Chrome (loading `/menubar` against the
+PB-served build):
+
+1. **Quick start + stop.** Click a row's ▶︎; row gains highlight and
+   pause icon. Click the ⏸︎; row reverts to a play icon and the active
+   highlight goes away within ~1s.
+2. **Stop persists.** After step 1, refresh the page. The row should
+   show a play icon (no row highlighted) and the underlying entry has
+   a non-empty `ended_at`.
+3. **Edit minutes inline on a completed entry.** Triple-click the
+   minutes input, type `15`, press Enter. The row redraws to `0h 15m`
+   and the day total reflects the change. Refresh: value persists.
+4. **Edit minutes on the *running* entry.** Same gesture: typing `15`
+   shifts `started_at` 15 minutes into the past; row keeps ticking
+   from there. Refresh: still running, still showing ≥15m.
+5. **Long-run + refresh.** Start a timer, wait until the row shows
+   `0h 01m` (~60s). Reload the page. The row should still be
+   highlighted, still show `0h 01m` (or more), pause button intact.
+6. **Switch projects.** Start row A → stop → start row B. Only one row
+   highlighted at a time; the inactive row's play button re-enables
+   as soon as B is stopped.
+7. **Multiple historic rows.** With several rows on a day, the play
+   button is enabled on all of them when nothing is running, and
+   disabled on all *non-active* rows the moment a timer starts.
+8. **Stop via `/time` page still works.** The /time page banner's
+   Stop button uses the same `timer.stop()` path and must clear the
+   banner without waiting for the realtime tick (regression guard
+   for §11.1).
