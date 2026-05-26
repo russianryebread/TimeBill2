@@ -98,7 +98,7 @@
   });
 </script>
 
-<div class="mx-auto max-w-5xl px-8 py-8">
+<div class="mx-auto max-w-6xl px-8 py-8">
   <div class="flex items-center justify-between">
     <div>
       <h1 class="text-2xl font-bold text-slate-900">Clients</h1>

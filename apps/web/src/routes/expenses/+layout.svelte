@@ -14,7 +14,7 @@
   }
 </script>
 
-<div class="mx-auto max-w-5xl px-8 py-8">
+<div class="mx-auto max-w-6xl px-8 py-8">
   <h1 class="text-2xl font-bold text-slate-900">Expenses</h1>
   <p class="mt-1 text-sm text-slate-600">Business spending, mileage, and recurring charges.</p>
 

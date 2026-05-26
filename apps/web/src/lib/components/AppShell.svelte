@@ -27,8 +27,8 @@
   }
 </script>
 
-<div class="flex min-h-screen bg-slate-50">
-  <aside class="flex w-56 flex-col border-r border-slate-200 bg-white">
+<div class="flex h-screen overflow-hidden bg-slate-50">
+  <aside class="sticky top-0 flex h-screen w-56 flex-col border-r border-slate-200 bg-white">
     <div class="flex items-center gap-2 px-5 py-4">
       <span class="inline-block h-8 w-8 rounded-md bg-brand-800"></span>
       <span class="text-lg font-semibold tracking-tight text-brand-800">TimeBill</span>
@@ -40,7 +40,7 @@
       </div>
     {/if}
 
-    <nav class="flex-1 space-y-0.5 py-3">
+    <nav class="flex-1 space-y-0.5 overflow-y-auto py-3">
       {#each navItems as item}
         <a
           href={item.disabled ? undefined : item.href}
@@ -76,18 +76,22 @@
       </div>
     {/if}
 
-    <div class="border-t border-slate-100 px-3 py-3">
-      <div class="px-2 text-xs text-slate-500">{auth.user?.email}</div>
+    <div class="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+      <span class="truncate text-xs text-slate-500" title={auth.user?.email ?? ''}>
+        {auth.user?.email}
+      </span>
       <button
-        class="mt-1 w-full rounded px-2 py-1 text-left text-sm text-slate-600 hover:bg-slate-100"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-800"
         onclick={() => auth.logOut()}
+        title="Sign out"
+        aria-label="Sign out"
       >
-        Sign out
+        <span class="icon-[ph--sign-out-duotone] text-lg" aria-hidden="true"></span>
       </button>
     </div>
   </aside>
 
-  <main class="flex-1 overflow-auto">
+  <main class="flex-1 overflow-y-auto">
     {@render children()}
   </main>
 </div>

@@ -107,8 +107,10 @@
   });
 
   function durationMs(e: Entry): number {
-    if (!e.ended_at) return Date.now() - new Date(e.started_at).getTime();
-    return new Date(e.ended_at).getTime() - new Date(e.started_at).getTime();
+    const ms = e.ended_at
+      ? new Date(e.ended_at).getTime() - new Date(e.started_at).getTime()
+      : Date.now() - new Date(e.started_at).getTime();
+    return Math.max(0, ms);
   }
   function sameDay(a: Date, b: Date): boolean {
     return (
@@ -188,7 +190,7 @@
   });
 </script>
 
-<div class="mx-auto max-w-5xl px-8 py-8">
+<div class="mx-auto max-w-6xl px-8 py-8">
   <h1 class="text-2xl font-bold text-slate-900">Time</h1>
   <p class="mt-1 text-sm text-slate-600">Track hours, see your week at a glance.</p>
 

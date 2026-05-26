@@ -28,7 +28,10 @@ export function parseUSDInput(input: string): Cents | null {
 }
 
 export function formatHours(milliseconds: number): string {
-  const totalMinutes = Math.floor(milliseconds / 60_000);
+  // Clamp negative durations (corrupt entries where ended_at < started_at)
+  // to 0 so the UI doesn't render the cosmetically broken "-1:-1".
+  const ms = Math.max(0, milliseconds);
+  const totalMinutes = Math.floor(ms / 60_000);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${h}:${m.toString().padStart(2, '0')}`;
@@ -39,7 +42,7 @@ export function formatHours(milliseconds: number): string {
  * live, ticking-second timer displays where `formatHours` would round to 0:00.
  */
 export function formatHMS(milliseconds: number): string {
-  const totalSeconds = Math.floor(milliseconds / 1000);
+  const totalSeconds = Math.floor(Math.max(0, milliseconds) / 1000);
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;

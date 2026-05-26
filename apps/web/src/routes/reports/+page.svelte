@@ -39,7 +39,7 @@
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
   function durationMs(e: Entry): number {
-    return new Date(e.ended_at).getTime() - new Date(e.started_at).getTime();
+    return Math.max(0, new Date(e.ended_at).getTime() - new Date(e.started_at).getTime());
   }
 
   async function load() {

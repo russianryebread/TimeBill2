@@ -57,8 +57,10 @@
   }
 
   function durationMs(e: Entry): number {
-    if (!e.ended_at) return Date.now() - new Date(e.started_at).getTime();
-    return new Date(e.ended_at).getTime() - new Date(e.started_at).getTime();
+    const ms = e.ended_at
+      ? new Date(e.ended_at).getTime() - new Date(e.started_at).getTime()
+      : Date.now() - new Date(e.started_at).getTime();
+    return Math.max(0, ms);
   }
 
   async function load() {

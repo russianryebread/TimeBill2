@@ -27,7 +27,9 @@ class TimerState {
 
   get elapsedMs(): number {
     if (!this.running) return 0;
-    return this.now - new Date(this.running.started_at).getTime();
+    // Clamp to 0: clock skew can produce a brief negative reading right
+    // after starting a timer (server stores a slightly-future started_at).
+    return Math.max(0, this.now - new Date(this.running.started_at).getTime());
   }
 
   async init() {

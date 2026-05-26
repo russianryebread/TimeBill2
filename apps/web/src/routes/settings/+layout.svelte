@@ -12,7 +12,7 @@
   }
 </script>
 
-<div class="mx-auto max-w-3xl px-8 py-8">
+<div class="mx-auto max-w-6xl px-8 py-8">
   <h1 class="text-2xl font-bold text-slate-900">Settings</h1>
 
   <nav class="mt-5 flex gap-1 border-b border-slate-200">
