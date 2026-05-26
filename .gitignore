@@ -1,1 +1,15 @@
-node_modules
+node_modules/
+.DS_Store
+*.log
+.env
+.env.local
+
+# Build outputs
+apps/web/build/
+apps/web/.svelte-kit/
+apps/desktop/src-tauri/target/
+
+# PocketBase: keep migrations + hooks in git; ignore everything else
+pocketbase/pocketbase
+pocketbase/pb_data/
+pocketbase/pb_public/

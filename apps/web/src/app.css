@@ -1,0 +1,42 @@
+@import 'tailwindcss';
+/**
+ * Iconify v4 plugin — usage:
+ *   <span class="icon-[ph--house-duotone]"></span>
+ * Sizing via `text-{n}` (icons inherit em); color via `text-{color}` for solid
+ * variants. Duotone variants render two-tone via the iconify mask layer.
+ */
+@plugin "@iconify/tailwind4" {
+  prefix: "icon";
+}
+
+/**
+ * Palette
+ *   #004e64  deep teal       — primary surface accents, headers
+ *   #00a5cf  cyan            — interactive primary
+ *   #25a18e  sea green       — secondary / running-timer state
+ *   #7ae582  light green     — success, paid status
+ *   #9fffcb  mint            — soft highlights, hover backdrops
+ */
+@theme {
+  --color-brand-50: #ecfeff;
+  --color-brand-100: #cffafe;
+  --color-brand-200: #9fffcb;
+  --color-brand-300: #7ae582;
+  --color-brand-400: #25a18e;
+  --color-brand-500: #00a5cf;
+  --color-brand-600: #0086a8;
+  --color-brand-700: #006782;
+  --color-brand-800: #004e64;
+  --color-brand-900: #033a4b;
+
+  --color-accent-mint: #9fffcb;
+  --color-accent-grass: #7ae582;
+  --color-accent-sea: #25a18e;
+  --color-accent-cyan: #00a5cf;
+  --color-accent-deep: #004e64;
+}
+
+html,
+body {
+  height: 100%;
+}

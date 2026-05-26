@@ -1,0 +1,7 @@
+{
+  "name": "@timebill/ui",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Shared Svelte components (placeholder; populated in Phase 1+)"
+}
