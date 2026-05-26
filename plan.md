@@ -240,3 +240,166 @@ End-to-end smoke test (run after each phase, full pass before any "v1 done" clai
 - `pocketbase/pb_hooks/invoice.pb.js` — number sequence, status derivation, public token routes
 - `pocketbase/pb_hooks/cron.pb.js` — daily jobs (recurring expenses, recurring invoices, overdue check)
 - `pocketbase/pb_hooks/email.pb.js` — invoice send template
+
+---
+
+## Phase 4 (implemented) — visualization, icons, edit/lock
+
+Added during the May 2026 working session:
+
+- **Iconify Phosphor Duotone** via `@iconify/tailwind4`. Usage form
+  `class="icon-[ph--house-duotone]"` (Tailwind only scans literal class
+  strings, so dynamic icon names must be written verbatim).
+- **Daily Gantt timeline** on `/time` — `lib/components/DayGantt.svelte`.
+  SVG-free, plain divs positioned with `%`. Auto-fits to first start → last
+  end with 30-min padding; ticks every whole hour; overlapping entries are
+  stacked into rows. Clicking a bar opens the edit modal.
+- **Time-entry edit modal** — `lib/components/TimeEntryEditor.svelte`. Opens
+  via the pencil button on each row. Datetime-local start/end, project,
+  activity, description, billable; Save / Cancel / Delete.
+- **Locked-when-invoiced** state — when `time_entries.invoice != ""`, the
+  row shows a lock icon, the pencil is hidden, and the server hook in
+  `pb_hooks/timer.pb.js` rejects any field changes except clearing the
+  invoice link (which the invoice-line-item delete does).
+- **Reports page** at `/reports`:
+  - Month + Year selectors.
+  - Hours/Billable/Active-days summary cards for the month.
+  - Calendar heatmap of hours per day (5-shade brand scale).
+  - Project mix donut + table (hours + billable per project).
+  - Client breakdown table with share bars.
+  - 12-month year overview (clickable bars switch the month).
+  - CSV exports for time, expenses, mileage, invoices, payments.
+
+---
+
+## Phase 5 (in progress) — hours-first edit, billing rounding, lock UX
+
+Driven by user feedback on the editor and invoicing flow.
+
+### 5.1 Hours-first time entry editor
+
+The edit modal currently leads with two datetime-local pickers. New
+behavior:
+
+- **Primary input is "Hours"** (decimal). When the user edits it, the end
+  time is automatically recomputed as `started_at + hoursMinutes`. This
+  matches how contractors actually think about a session ("that meeting was
+  about 1.5 hours").
+- **Clock-time fine-tuning is secondary** — placed behind a disclosure
+  ("Adjust clock times") that, when expanded, reveals the two
+  datetime-local inputs. Editing them still works as before, and editing
+  start/end keeps the hours input in sync.
+- Both views write the same `started_at` / `ended_at` fields.
+
+### 5.2 Billing rounding setting
+
+Contractors typically round billed time up to a chosen granularity (most
+common: nearest 15 min). Reports should still reflect actual time worked.
+
+- **New workspace field:** `billing_rounding_minutes` (number, default
+  `0` = no rounding). Allowed values: `0`, `5`, `15`, `30`, `60`. Stored on
+  `workspaces` (because it's a billing preference, not a tax setting).
+- **New settings page** at `/settings/billing` to choose the value. A
+  segmented control with the five options. Persists to the workspace
+  record.
+- **Applied at invoice-line creation only.** When "Add selected to invoice"
+  pulls a time entry, the line item's `quantity` (hours) is rounded *up* to
+  the chosen granularity. The underlying `time_entries.rate_cents_snapshot`
+  and actual duration are untouched, so:
+  - **Invoices** show rounded hours.
+  - **Reports** continue to show exact durations.
+- Implementation lives in `packages/shared/invoice.ts`:
+  `roundHours(hours, roundingMinutes)`. Pure function, easy to unit-test.
+
+### 5.3 Clickable locked entries → invoice link
+
+The lock icon currently signals "you can't edit this," but doesn't tell
+the user *where* the entry was billed.
+
+- Clicking a locked entry's row (or the lock icon) opens the editor in
+  **read-only mode** (already supported by `TimeEntryEditor` when
+  `entry.invoice` is set).
+- The header shows a chip linking to `/invoices/{invoice}` — e.g.,
+  "Linked to INV-2026-0001 →".
+- All fields disabled; only Close + the invoice link are interactive.
+
+### 5.4 Settings page restructure
+
+Settings currently routes only to `/settings/tasks` (activity types). Now
+needs at least one sibling (`/settings/billing`). Plan:
+
+- Add a `/settings/+layout.svelte` with a sub-nav: Activity types ·
+  Billing. Mirrors the `/expenses` tab pattern.
+- Future settings (workspace name, mileage rate, tax filing status) all
+  land here.
+
+---
+
+## Phase 6 (in progress) — quality of life + Harvest import
+
+Big batch of polish and the first competitor-data import.
+
+### 6.1 Visual consistency
+
+- **Standardize all pages to `max-w-6xl px-8 py-8`** (1152px). Previously
+  /clients, /projects, /time, /settings, /expenses-tabs used `max-w-3xl`
+  or `max-w-5xl`, which made the layout jump as you clicked around.
+- **Sidebar sticks to the viewport.** `AppShell` becomes `flex h-screen` at
+  the outer level; sidebar is `h-screen sticky top-0`; main content has its
+  own `overflow-y-auto`. The signout footer always sits at the bottom of
+  the visible page, not the bottom of long scrollable content.
+- **Sign out as icon button.** Replace the text link with a
+  `ph--sign-out-duotone` icon button, with the user's email next to it.
+- **Fix `-1:-1` display.** `formatHours` / `formatHMS` now clamp negative
+  ms to 0. `timer.elapsedMs` likewise clamps. Defensive against corrupt
+  entries where `ended_at < started_at`.
+
+### 6.2 Workspace name as company name
+
+- New `/settings/workspace` route to rename the workspace. `workspaces.name`
+  is already what appears as "FROM" on the public invoice view and in the
+  PDF — verifying the rename flows through.
+- Future: optional company address / logo upload land here too (deferred).
+
+### 6.3 Bulk invoice actions
+
+- **"Add all unbilled"** button in the invoice editor's pull-unbilled side
+  panel. Single click selects + adds every item in the active tab (Time /
+  Expenses / Mileage) for the invoice's client. Existing checkbox flow
+  remains for selective adds.
+- **"Generate from month…"** button on `/invoices`. Modal: pick a client +
+  month. Creates a draft invoice and pulls **every unbilled time entry,
+  expense, and mileage entry** for that client in the chosen month range.
+  Applies billing rounding. Navigates to the draft.
+
+### 6.4 Harvest CSV import
+
+- New `/settings/import` route.
+- Accepts the standard Harvest **Reports → Detailed Time Entries** CSV.
+  Columns: `Date, Client, Project, Project Code, Task, Notes, Hours, …,
+  Billable?, Invoiced?, Billable Rate, …`.
+- Import flow:
+  1. User uploads CSV (parsed client-side).
+  2. Preview screen: counts of new clients / projects / tasks / time
+     entries to create, plus a sample of the first ~10 rows. Skipped
+     duplicates (existing client/project/task name match) noted.
+  3. Confirm → does the imports in batch:
+     - For each unique client name → create `clients` if missing.
+     - For each unique (client, project) → create `projects` if missing
+       (uses the row's billable rate as the project rate).
+     - For each unique task name → create `tasks` (activity types) if
+       missing.
+     - For each row → create a `time_entries` record:
+       - `date` + `09:00` + accumulated-hours-that-day → `started_at`
+       - `started_at + hours` → `ended_at`
+       - `Notes` → description
+       - `billable` flag
+       - `rate_cents_snapshot` from Billable Rate (or project rate)
+- v1 ships with Harvest only; the parser is structured so Toggl / others
+  can drop in by adding a new mapper.
+
+### 6.5 Process
+
+- `CLAUDE.md` now contains two more standing instructions:
+  - Commit after each milestone.
+  - Mirror this spec to the repo's `plan.md`.

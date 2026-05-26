@@ -15,6 +15,17 @@ Newer entries are appended.
    verify it works visually. Don't claim a feature is done from typecheck +
    curl alone if there's UI involved.
 
+3. **Commit after each milestone.** When a cohesive group of changes is
+   verified working (one feature, one bug fix, one refactor — *not* "all of
+   today's work"), make a git commit with a short, focused message. The
+   commit history should read like a changelog. Don't pile multiple
+   features into one commit. Commit only files relevant to the milestone;
+   never `git add -A`.
+
+4. **Mirror the spec to `plan.md` in the repo.** Whenever you touch
+   `~/.claude/plans/let-s-plan-out-a-noble-sprout.md`, copy the same
+   content into the repo's `plan.md`. The two files should always agree.
+
 ## Project facts
 
 - **Stack:** SvelteKit (static SPA) · Tauri (Mac) · PocketBase (single Go
