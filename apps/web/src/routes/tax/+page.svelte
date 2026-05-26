@@ -42,6 +42,13 @@
   let filingStatus = $state<FilingStatus>('single');
   let otherIncomeInput = $state('0');
 
+  // Forecast mode. When set to "trailing90", the estimate uses YTD plus a
+  // projection of the rest of the year built from the trailing 90 days'
+  // monthly run-rate. Defaults to YTD-only so early-year numbers don't
+  // mislead with a small denominator extrapolated wildly.
+  type ForecastMode = 'ytd' | 'trailing90';
+  let forecastMode = $state<ForecastMode>('ytd');
+
   function durationMs(e: Entry): number {
     return Math.max(0, new Date(e.ended_at).getTime() - new Date(e.started_at).getTime());
   }
@@ -108,6 +115,68 @@
 
   let netSEIncomeCents = $derived(billableRevenueCents - totalDeductionsCents);
 
+  // ---- Trailing-90-day projection ----------------------------------------
+
+  /** Filter helper: only items in the trailing 90 days from "now". */
+  function withinTrailing90Days(isoLike: string): boolean {
+    const t = new Date(isoLike).getTime();
+    return t >= Date.now() - 90 * 24 * 60 * 60 * 1000;
+  }
+
+  let trailing90RevenueCents = $derived(
+    entries
+      .filter((e) => e.billable && e.rate_cents_snapshot && withinTrailing90Days(e.started_at))
+      .reduce(
+        (sum, e) => sum + Math.round((e.rate_cents_snapshot! * durationMs(e)) / 3_600_000),
+        0
+      )
+  );
+  let trailing90ExpenseCents = $derived(
+    expenses.filter((e) => withinTrailing90Days(e.date)).reduce((s, e) => s + (e.amount_cents ?? 0), 0)
+  );
+  let trailing90MileageCents = $derived(
+    mileage
+      .filter((m) => withinTrailing90Days(m.date))
+      .reduce((sum, m) => sum + Math.round(m.miles * (m.rate_cents_snapshot ?? 0)), 0)
+  );
+  let trailing90NetCents = $derived(
+    trailing90RevenueCents - trailing90ExpenseCents - trailing90MileageCents
+  );
+
+  /** Months remaining in the calendar year, fractional (today through Dec 31). */
+  let monthsRemaining = $derived.by(() => {
+    const now = new Date();
+    if (now.getFullYear() !== year) {
+      // Looking at a past or future year — no "remainder" to project; project the
+      // whole year from the trailing 90.
+      return now.getFullYear() < year ? 12 : 0;
+    }
+    const yearEnd = new Date(year + 1, 0, 1).getTime();
+    return Math.max(0, (yearEnd - now.getTime()) / (30.44 * 24 * 60 * 60 * 1000));
+  });
+
+  /** Net SE income projected forward from the trailing 90 days. */
+  let projectedRemainderCents = $derived(
+    Math.max(0, Math.round((trailing90NetCents / 3) * monthsRemaining))
+  );
+
+  let projectedRevenueRemainder = $derived(
+    Math.max(0, Math.round((trailing90RevenueCents / 3) * monthsRemaining))
+  );
+  let projectedDeductionsRemainder = $derived(
+    Math.max(
+      0,
+      Math.round(((trailing90ExpenseCents + trailing90MileageCents) / 3) * monthsRemaining)
+    )
+  );
+
+  /** What the estimate actually feeds into estimateAnnualTax(). */
+  let effectiveNetSEIncomeCents = $derived(
+    forecastMode === 'trailing90'
+      ? Math.max(0, netSEIncomeCents + projectedRemainderCents)
+      : Math.max(0, netSEIncomeCents)
+  );
+
   let otherIncomeCents = $derived(() => {
     const n = Number(otherIncomeInput.replace(/[$,\s]/g, ''));
     return Number.isFinite(n) ? Math.round(n * 100) : 0;
@@ -115,7 +184,7 @@
 
   let estimate = $derived(
     estimateAnnualTax({
-      netSEIncomeCents: Math.max(0, netSEIncomeCents),
+      netSEIncomeCents: effectiveNetSEIncomeCents,
       filingStatus,
       otherIncomeCents: otherIncomeCents()
     })
@@ -196,14 +265,26 @@
         Year-to-date self-employment tax projection for {year}.
       </p>
     </div>
-    <label class="block">
-      <span class="text-xs text-slate-500">Year</span>
-      <input
-        type="number"
-        bind:value={year}
-        class="mt-1 w-24 rounded border border-slate-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
-      />
-    </label>
+    <div class="flex items-end gap-3">
+      <label class="block">
+        <span class="text-xs text-slate-500">Forecast</span>
+        <select
+          bind:value={forecastMode}
+          class="mt-1 rounded border border-slate-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+        >
+          <option value="ytd">YTD actuals only</option>
+          <option value="trailing90">Project from last 90 days</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-xs text-slate-500">Year</span>
+        <input
+          type="number"
+          bind:value={year}
+          class="mt-1 w-24 rounded border border-slate-300 px-3 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </label>
+    </div>
   </div>
 
   <!-- Disclaimer banner -->
@@ -293,9 +374,72 @@
     </div>
   </section>
 
+  {#if forecastMode === 'trailing90'}
+    <!-- Projection panel: trailing 90 days extrapolated for the rest of the year -->
+    <section class="mt-6 rounded-xl border border-brand-200 bg-brand-50 p-5">
+      <div class="flex items-start gap-3">
+        <span class="icon-[ph--trend-up-duotone] mt-0.5 text-2xl text-brand-700" aria-hidden="true"></span>
+        <div class="flex-1">
+          <h2 class="text-sm font-semibold text-brand-900">
+            Projected annual from trailing 90 days
+          </h2>
+          <p class="text-xs text-brand-800/80">
+            Adds {monthsRemaining.toFixed(1)} months of projected activity onto
+            YTD using your last-90-day monthly run-rate
+            ({formatUSD(Math.round(trailing90NetCents / 3))}/mo net SE income).
+            Tax estimate below uses these projected totals.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div class="rounded-lg border border-brand-200 bg-white p-4">
+          <div class="text-xs uppercase tracking-wider text-slate-500">Projected revenue</div>
+          <div class="mt-1 font-mono text-2xl font-semibold text-brand-800">
+            {formatUSD(billableRevenueCents + projectedRevenueRemainder)}
+          </div>
+          <div class="mt-1 text-xs text-slate-500">
+            {formatUSD(billableRevenueCents)} actual
+            + {formatUSD(projectedRevenueRemainder)} projected
+          </div>
+        </div>
+        <div class="rounded-lg border border-brand-200 bg-white p-4">
+          <div class="text-xs uppercase tracking-wider text-slate-500">Projected deductible</div>
+          <div class="mt-1 font-mono text-2xl font-semibold text-brand-800">
+            {formatUSD(totalDeductionsCents + projectedDeductionsRemainder)}
+          </div>
+          <div class="mt-1 text-xs text-slate-500">
+            {formatUSD(totalDeductionsCents)} actual
+            + {formatUSD(projectedDeductionsRemainder)} projected
+          </div>
+        </div>
+        <div class="rounded-lg border border-brand-300 bg-white p-4">
+          <div class="text-xs uppercase tracking-wider text-slate-500">Projected net SE income</div>
+          <div class="mt-1 font-mono text-2xl font-semibold text-brand-800">
+            {formatUSD(effectiveNetSEIncomeCents)}
+          </div>
+          <div class="mt-1 text-xs text-slate-500">
+            Used in the tax estimate below
+          </div>
+        </div>
+      </div>
+    </section>
+  {/if}
+
   <!-- Tax estimate card -->
   <section class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-    <h2 class="text-sm font-medium text-slate-700">Annual tax estimate</h2>
+    <h2 class="text-sm font-medium text-slate-700">
+      Annual tax estimate
+      {#if forecastMode === 'trailing90'}
+        <span class="ml-1 rounded-full bg-brand-200 px-1.5 py-0.5 text-[10px] font-medium text-brand-900">
+          projected
+        </span>
+      {:else}
+        <span class="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+          YTD only
+        </span>
+      {/if}
+    </h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-4">
       <div>
         <div class="text-xs uppercase tracking-wider text-slate-500">SE tax</div>
