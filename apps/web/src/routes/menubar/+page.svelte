@@ -374,11 +374,13 @@
     const trimmed = urlDraft.trim();
     if (!trimmed) return;
     localStorage.setItem('pb_url', trimmed);
+    pb.authStore.clear();
     window.location.reload();
   }
 
   function clearUrl() {
     localStorage.removeItem('pb_url');
+    pb.authStore.clear();
     window.location.reload();
   }
 
@@ -591,21 +593,20 @@
     <div class="flex items-center gap-0.5">
       <button
         type="button"
+        class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-brand-700"
+        onclick={openMainApp}
+        title="Open the full TimeBill app"
+      >
+        <span class="icon-[ph--app-window-duotone]" aria-hidden="true"></span>
+      </button>
+      <button
+        type="button"
         class="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-50 hover:text-brand-700"
         onclick={() => (settingsOpen = true)}
         title="Settings"
         aria-label="Settings"
       >
         <span class="icon-[ph--gear-duotone]" aria-hidden="true"></span>
-      </button>
-      <button
-        type="button"
-        class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-brand-700"
-        onclick={openMainApp}
-        title="Open the full TimeBill app"
-      >
-        <span class="icon-[ph--arrow-square-out]" aria-hidden="true"></span>
-        Open app
       </button>
     </div>
 

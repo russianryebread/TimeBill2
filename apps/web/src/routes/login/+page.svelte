@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { auth } from '$lib/auth.svelte';
   import { goto } from '$app/navigation';
-  import { pbUrl } from '$lib/pb';
+  import { pb, pbUrl } from '$lib/pb';
 
   let email = $state('');
   let password = $state('');
@@ -24,6 +24,7 @@
     const trimmed = urlDraft.trim();
     if (!trimmed) return;
     localStorage.setItem('pb_url', trimmed);
+    pb.authStore.clear();
     window.location.reload();
   }
 
