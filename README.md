@@ -42,11 +42,10 @@ npm run dev:web
 npm run dev:desktop
 ```
 
-## Deployment
+## Prod Deployment
 
 ```sh
 git pull
-npm run build:web:to-pb
 cd deploy/
 sudo docker compose up -d --build
 ```

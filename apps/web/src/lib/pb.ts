@@ -15,17 +15,7 @@ function resolvePbUrl(): string {
   if (!browser) return URL;
   const override = localStorage.getItem('pb_url');
   if (override) return override;
-  const proto = window.location.protocol;
-  // Tauri's webview serves from `tauri://...` (or `https://tauri.localhost`).
-  // Either way, fetches need a real network host — default to localhost PB.
-  const isTauri =
-    typeof (window as any).__TAURI__ !== 'undefined' ||
-    typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' ||
-    proto === 'tauri:' ||
-    proto === 'tauri-http:';
-  if (isTauri) return URL;
-  // Web build served by PocketBase itself — same origin.
-  return `${proto}//${window.location.hostname}:${window.location.port || 8090}`;
+  return URL;
 }
 
 export const pbUrl = resolvePbUrl();
