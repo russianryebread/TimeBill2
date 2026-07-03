@@ -70,13 +70,13 @@ class TimerState {
       const { invoke } = await import('@tauri-apps/api/core');
       if (this.running) {
         await invoke('push_timer_state', {
-          running_started_ms: new Date(this.running.started_at).getTime(),
-          daily_base_ms: Math.round(dailyBaseMs)
+          runningStartedMs: new Date(this.running.started_at).getTime(),
+          dailyBaseMs: Math.round(dailyBaseMs)
         });
       } else {
         await invoke('push_timer_state', {
-          running_started_ms: null,
-          daily_base_ms: 0
+          runningStartedMs: null,
+          dailyBaseMs: 0
         });
       }
     } catch (_) {

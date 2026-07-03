@@ -418,6 +418,18 @@
     await goto('/login');
   }
 
+  async function quitApp() {
+    try {
+      if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined') {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('quit_app');
+      }
+    } catch (_) {
+      // Fallback: just close the window.
+      window.close();
+    }
+  }
+
   onMount(async () => {
     if (workspace.current) load();
     hasUrlOverride = !!localStorage.getItem('pb_url');
@@ -456,7 +468,7 @@
             onclick={() => goToToday()}
             aria-label="Go To Today"
             title="Go To Today"
-        >□</button>
+        ><span class="icon-[ph--calendar-duotone]" aria-hidden="true"></span></button>
       </div>
       <div class="flex items-center gap-2">
         <button
@@ -753,14 +765,24 @@
 
           <hr class="border-slate-100" />
 
-          <button
-            type="button"
-            onclick={signOut}
-            class="flex items-center gap-1.5 rounded px-2 py-1.5 text-sm text-red-600 hover:bg-red-50"
-          >
-            <span class="icon-[ph--sign-out-duotone]" aria-hidden="true"></span>
-            Sign out
-          </button>
+          <div class="flex items-center justify-between">
+            <button
+              type="button"
+              onclick={signOut}
+              class="flex items-center gap-1.5 rounded px-2 py-1.5 text-sm text-red-600 hover:bg-red-50"
+            >
+              <span class="icon-[ph--sign-out-duotone]" aria-hidden="true"></span>
+              Sign out
+            </button>
+            <button
+              type="button"
+              onclick={quitApp}
+              class="flex items-center gap-1.5 rounded px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              <span class="icon-[ph--x-circle-duotone]" aria-hidden="true"></span>
+              Quit
+            </button>
+          </div>
         </div>
       </div>
 

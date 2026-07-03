@@ -172,6 +172,12 @@ fn set_tray_title(app: AppHandle, title: String) {
         let _ = tray.set_icon(Some(make_recording_dot_icon()));
     }
 }
+/// JS-callable: quit the application.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
 /// Spawn a background thread that ticks every second and updates the tray
 /// title using the state pushed by the frontend. Immune to webview timer
 /// throttling because it runs in a native OS thread.
@@ -398,7 +404,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![push_timer_state, set_tray_title])
+        .invoke_handler(tauri::generate_handler![push_timer_state, set_tray_title, quit_app])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
