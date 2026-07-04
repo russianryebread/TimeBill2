@@ -2,7 +2,9 @@
   import { onMount } from 'svelte';
   import { pb, toPbDate } from '$lib/pb';
   import { workspace } from '$lib/workspace.svelte';
+  import { auth } from '$lib/auth.svelte';
   import { formatUSD, formatHours, hoursDecimal } from '@timebill/shared/money';
+  import LandingPage from '$lib/components/LandingPage.svelte';
 
   let weekHours = $state(0);
   let weekBillableCents = $state(0);
@@ -65,6 +67,9 @@
   });
 </script>
 
+{#if !auth.isLoggedIn}
+  <LandingPage />
+{:else}
 <div class="mx-auto max-w-6xl px-8 py-8">
   <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
   <p class="mt-1 text-sm text-slate-600">This week at a glance.</p>
@@ -100,3 +105,4 @@
     </ol>
   </section>
 </div>
+{/if}

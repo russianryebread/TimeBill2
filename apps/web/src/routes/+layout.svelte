@@ -13,15 +13,20 @@
 
   let { children } = $props();
 
-  const publicPaths = ['/login', '/signup'];
-  let isPublic = $derived(publicPaths.includes($page.url.pathname));
+  const publicPaths = ['/login', '/signup', '/'];
+  // / is only "public" (no AppShell) when the visitor isn't logged in.
+  // When logged in, / is the dashboard and needs the full shell.
+  let isPublic = $derived(
+    publicPaths.includes($page.url.pathname) &&
+    ($page.url.pathname !== '/' || !auth.isLoggedIn)
+  );
   let isChromeless = $derived($page.url.pathname.startsWith('/menubar') || $page.url.pathname.startsWith('/i/'));
 
   $effect(() => {
     const path = $page.url.pathname;
     if (!auth.isLoggedIn && !publicPaths.includes(path)) {
       goto('/login');
-    } else if (auth.isLoggedIn && publicPaths.includes(path)) {
+    } else if (auth.isLoggedIn && publicPaths.includes(path) && path !== '/') {
       goto('/');
     }
   });
