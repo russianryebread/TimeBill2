@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "devtools"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,5 +25,5 @@ user-idle = "0.6"
 [target."cfg(target_os = \"macos\")".dependencies]
 # For NSWindow access — round the actual macOS window via
 # contentView.layer.cornerRadius rather than relying on the inner div alone.
-objc2 = "0.5"
-objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSView"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3" }
