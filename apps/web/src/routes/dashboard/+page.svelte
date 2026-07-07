@@ -3,6 +3,7 @@
   import { pb, toPbDate } from '$lib/pb';
   import { workspace } from '$lib/workspace.svelte';
   import { formatUSD, formatHours, hoursDecimal } from '@timebill/shared/money';
+  import DayGantt from '$lib/components/DayGantt.svelte';
   import TimeTracker from '$lib/components/TimeTracker.svelte';
 
   let weekHours = $state(0);
@@ -10,6 +11,17 @@
   let outstandingCents = $state(0);
   let clientCount = $state(0);
   let activeProjectCount = $state(0);
+  let todayEntries = $state<GanttEntry[]>([]);
+
+  type GanttEntry = {
+    id: string;
+    started_at: string;
+    ended_at: string | null;
+    description: string;
+    expand?: {
+      project?: { name: string; color?: string };
+    };
+  };
 
   function startOfWeek(d: Date): Date {
     const day = d.getDay();
@@ -26,7 +38,8 @@
     const weekStart = toPbDate(startOfWeek(new Date()));
 
     const entries = await pb.collection('time_entries').getFullList({
-      filter: `workspace = "${wsId}" && started_at >= "${weekStart}"`
+      filter: `workspace = "${wsId}" && started_at >= "${weekStart}"`,
+      expand: 'project'
     });
     let totalMs = 0;
     let billableCents = 0;
@@ -40,6 +53,24 @@
     }
     weekHours = totalMs;
     weekBillableCents = billableCents;
+
+    // Today's entries for the DayGantt timeline.
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+    todayEntries = entries
+      .filter((e: any) => {
+        const s = new Date(e.started_at);
+        return s >= todayStart && s < todayEnd;
+      })
+      .map((e: any) => ({
+        id: e.id,
+        started_at: e.started_at,
+        ended_at: e.ended_at,
+        description: e.description ?? '',
+        expand: e.expand
+      }));
 
     const clients = await pb.collection('clients').getList(1, 1, {
       filter: `workspace = "${wsId}" && archived = false`
@@ -65,20 +96,20 @@
   <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
   <p class="mt-1 text-sm text-slate-600">This week at a glance.</p>
 
-  <section class="mt-6 gap-4 grid-cols-2 md:grid-cols-4 hidden sm:grid">
-    <div class="rounded-xl border border-slate-200 bg-white p-3 md-p5">
+  <section class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Week hours</div>
       <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatHours(weekHours)}</div>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-3 md-p5">
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Week billable</div>
       <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatUSD(weekBillableCents)}</div>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-3 md-p5">
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Outstanding A/R</div>
       <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatUSD(outstandingCents)}</div>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-3 md-p5">
+    <div class="rounded-xl border border-slate-200 bg-white p-5">
       <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Active projects</div>
       <div class="mt-2 text-3xl font-semibold text-brand-800">
         {activeProjectCount}
@@ -87,15 +118,29 @@
     </div>
   </section>
 
+  <!-- DayGantt timeline -->
+  {#if todayEntries.length > 0}
+    <section class="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-medium text-slate-700">Today's timeline</h2>
+        <span class="font-mono text-xs text-slate-500">
+          {formatHours(todayEntries.reduce((s, e) => {
+            const end = e.ended_at ? new Date(e.ended_at).getTime() : Date.now();
+            return s + Math.max(0, end - new Date(e.started_at).getTime());
+          }, 0))}
+        </span>
+      </div>
+      <DayGantt entries={todayEntries} />
+    </section>
+  {/if}
+
   {#if activeProjectCount > 0}
-    <!-- Time tracker card -->
     <section class="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div class="max-h-128 overflow-auto">
+      <div class="max-h-[32rem] overflow-auto">
         <TimeTracker />
       </div>
     </section>
   {:else}
-    <!-- Getting started -->
     <section class="mt-8 rounded-xl border border-slate-200 bg-white p-6">
       <h2 class="font-semibold text-slate-900">Get started</h2>
       <ol class="mt-3 space-y-1 text-sm text-slate-600">
