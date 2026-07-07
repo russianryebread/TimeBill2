@@ -40,3 +40,14 @@ html,
 body {
   height: 100%;
 }
+
+/* iOS PWA safe-area padding — keeps content clear of the notch
+   and home indicator when the app is installed to the home screen. */
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}

@@ -94,6 +94,14 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+            // Main window: hide instead of closing so it can be re-shown
+            // instantly from the tray menu. (⌘W hides, ⌘Q quits.)
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .setup(move |app| {
             // Global shortcut.

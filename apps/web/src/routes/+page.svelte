@@ -5,6 +5,7 @@
   import { auth } from '$lib/auth.svelte';
   import { formatUSD, formatHours, hoursDecimal } from '@timebill/shared/money';
   import LandingPage from '$lib/components/LandingPage.svelte';
+  import TimeTracker from '$lib/components/TimeTracker.svelte';
 
   let weekHours = $state(0);
   let weekBillableCents = $state(0);
@@ -70,39 +71,44 @@
 {#if !auth.isLoggedIn}
   <LandingPage />
 {:else}
-<div class="mx-auto max-w-6xl px-8 py-8">
-  <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
-  <p class="mt-1 text-sm text-slate-600">This week at a glance.</p>
+  <!-- Mobile: time tracking UI -->
+  <div class="lg:hidden h-full">
+    <TimeTracker />
+  </div>
+  <!-- Desktop: dashboard -->
+  <div class="hidden lg:block mx-auto max-w-6xl px-8 py-8">
+    <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
+    <p class="mt-1 text-sm text-slate-600">This week at a glance.</p>
 
-  <section class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-    <div class="rounded-xl border border-slate-200 bg-white p-5">
-      <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Week hours</div>
-      <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatHours(weekHours)}</div>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-5">
-      <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Week billable</div>
-      <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatUSD(weekBillableCents)}</div>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-5">
-      <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Outstanding A/R</div>
-      <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatUSD(outstandingCents)}</div>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-5">
-      <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Active projects</div>
-      <div class="mt-2 text-3xl font-semibold text-brand-800">
-        {activeProjectCount}
-        <span class="text-base text-slate-400">/ {clientCount} clients</span>
+    <section class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-xl border border-slate-200 bg-white p-5">
+        <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Week hours</div>
+        <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatHours(weekHours)}</div>
       </div>
-    </div>
-  </section>
+      <div class="rounded-xl border border-slate-200 bg-white p-5">
+        <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Week billable</div>
+        <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatUSD(weekBillableCents)}</div>
+      </div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5">
+        <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Outstanding A/R</div>
+        <div class="mt-2 font-mono text-3xl font-semibold text-brand-800">{formatUSD(outstandingCents)}</div>
+      </div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5">
+        <div class="text-xs font-medium uppercase tracking-wider text-slate-500">Active projects</div>
+        <div class="mt-2 text-3xl font-semibold text-brand-800">
+          {activeProjectCount}
+          <span class="text-base text-slate-400">/ {clientCount} clients</span>
+        </div>
+      </div>
+    </section>
 
-  <section class="mt-8 rounded-xl border border-slate-200 bg-white p-6">
-    <h2 class="font-semibold text-slate-900">Get started</h2>
-    <ol class="mt-3 space-y-1 text-sm text-slate-600">
-      <li>1. <a href="/clients" class="text-brand-600 hover:underline">Add a client</a></li>
-      <li>2. <a href="/projects" class="text-brand-600 hover:underline">Create a project</a> with an hourly rate</li>
-      <li>3. <a href="/time" class="text-brand-600 hover:underline">Start a timer</a> on the time page</li>
-    </ol>
-  </section>
-</div>
+    <section class="mt-8 rounded-xl border border-slate-200 bg-white p-6">
+      <h2 class="font-semibold text-slate-900">Get started</h2>
+      <ol class="mt-3 space-y-1 text-sm text-slate-600">
+        <li>1. <a href="/clients" class="text-brand-600 hover:underline">Add a client</a></li>
+        <li>2. <a href="/projects" class="text-brand-600 hover:underline">Create a project</a> with an hourly rate</li>
+        <li>3. <a href="/time" class="text-brand-600 hover:underline">Start a timer</a> on the time page</li>
+      </ol>
+    </section>
+  </div>
 {/if}
