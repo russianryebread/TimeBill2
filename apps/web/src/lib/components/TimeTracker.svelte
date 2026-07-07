@@ -7,7 +7,6 @@
   import { timer } from '$lib/timer.svelte';
   import { api } from '$lib/api';
   import { formatHours } from '@timebill/shared/money';
-  import { sidebar } from '$lib/sidebar.svelte';
 
   let { isMenubar = false }: { isMenubar?: boolean } = $props();
 
@@ -423,11 +422,6 @@
   <header class="bg-brand-800 px-4 py-3 text-white">
     <div class="flex items-center justify-between text-sm">
       <div class="flex items-center gap-2">
-        <button
-          class="flex h-6 w-6 items-center justify-center rounded-full hover:bg-white/10 lg:hidden"
-          onclick={() => sidebar.toggle()}
-          aria-label="Open menu"
-        ><span class="icon-[ph--list-duotone]" aria-hidden="true"></span></button>
         <span class="font-medium">{fmtDate(selectedDay)}</span>
         <button
           class="flex h-6 w-6 items-center justify-center rounded-full hover:bg-white/10"

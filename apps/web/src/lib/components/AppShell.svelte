@@ -116,6 +116,37 @@
 
   <!-- Main content -->
   <main class="flex-1 overflow-y-auto">
+    <!-- Mobile top bar: hamburger + page title, visible on every route -->
+    <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5 lg:hidden">
+      <button
+        class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-100"
+        onclick={() => sidebar.toggle()}
+        aria-label="Open menu"
+      ><span class="icon-[ph--list-duotone] text-lg" aria-hidden="true"></span></button>
+      <span class="truncate text-sm font-medium text-slate-800">
+        {#if $page.url.pathname === '/'}
+          Home
+        {:else if $page.url.pathname === '/time'}
+          Time
+        {:else if $page.url.pathname.startsWith('/clients')}
+          Clients
+        {:else if $page.url.pathname.startsWith('/projects')}
+          Projects
+        {:else if $page.url.pathname.startsWith('/expenses')}
+          Expenses
+        {:else if $page.url.pathname.startsWith('/invoices')}
+          Invoices
+        {:else if $page.url.pathname.startsWith('/reports')}
+          Reports
+        {:else if $page.url.pathname.startsWith('/tax')}
+          Tax
+        {:else if $page.url.pathname.startsWith('/settings')}
+          Settings
+        {:else}
+          TimeBill
+        {/if}
+      </span>
+    </header>
     {@render children()}
   </main>
 </div>
