@@ -546,12 +546,12 @@
           onclick={openMainApp} title="Open the full TimeBill app">
           <span class="icon-[ph--app-window-duotone]" aria-hidden="true"></span>
         </button>
+        <button type="button"
+            class="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-50 hover:text-brand-700"
+            onclick={() => (settingsOpen = true)} title="Settings" aria-label="Settings">
+            <span class="icon-[ph--gear-duotone]" aria-hidden="true"></span>
+        </button>
       {/if}
-      <button type="button"
-        class="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-50 hover:text-brand-700"
-        onclick={() => (settingsOpen = true)} title="Settings" aria-label="Settings">
-        <span class="icon-[ph--gear-duotone]" aria-hidden="true"></span>
-      </button>
     </div>
 
     {#if pickerOpen}
