@@ -1,6 +1,6 @@
 [package]
 name = "timebill"
-version = "0.0.1"
+version = "1.0.1"
 description = "TimeBill desktop app"
 authors = ["Ryan Hoshor <ryan@hoshor.me>"]
 edition = "2021"
