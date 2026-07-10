@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { pb } from '$lib/pb';
   import { workspace } from '$lib/workspace.svelte';
+  import { GIT_SHA, APP_VERSION } from '$lib/env';
 
   let name = $state('');
   let saving = $state(false);
@@ -67,4 +68,9 @@
       {saving ? 'Saving…' : 'Save'}
     </button>
   </form>
+
+  <!-- Build info — handy for desktop users checking what's deployed. -->
+  <p class="mt-4 max-w-xl text-xs text-slate-400">
+    v{APP_VERSION} · <code class="font-mono">{GIT_SHA}</code>
+  </p>
 </div>

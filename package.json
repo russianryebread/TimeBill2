@@ -10,10 +10,10 @@
   "scripts": {
     "dev:web": "npm --workspace=apps/web run dev",
     "dev:pb": "cd pocketbase && ./pocketbase serve --http=127.0.0.1:8090",
-    "build:web": "npm --workspace=apps/web run build",
-    "build:web:to-pb": "npm --workspace=apps/web run build && rm -rf pocketbase/pb_public && cp -R apps/web/build pocketbase/pb_public",
+    "build:desktop": "scripts/bump-version.sh && npm --workspace=apps/desktop run tauri build",
+    "build:web": "scripts/bump-version.sh && npm --workspace=apps/web run build",
+    "build:web:to-pb": "scripts/bump-version.sh && npm --workspace=apps/web run build && rm -rf pocketbase/pb_public && cp -R apps/web/build pocketbase/pb_public",
     "dev:desktop": "npm --workspace=apps/desktop run tauri dev",
-    "build:desktop": "npm --workspace=apps/desktop run tauri build",
     "typecheck": "npm --workspaces --if-present run typecheck",
     "test": "npm --workspaces --if-present run test"
   },
