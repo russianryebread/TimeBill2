@@ -92,13 +92,32 @@ class TimerState {
       sort: '-started_at',
       expand: 'project,project.client,task'
     });
-    this.running = (list.items[0] as TimeEntry | undefined) ?? null;
+    const entry = list.items[0] as TimeEntry | undefined;
+    // Auto-stop timers that have been running for more than 24 hours —
+    // they're almost certainly stale (forgotten, never properly ended)
+    // and would otherwise show misleading elapsed time in the tray.
+    if (entry) {
+      const ageMs = Date.now() - new Date(entry.started_at).getTime();
+      if (ageMs > 86_400_000) {
+        try {
+          await pb.collection('time_entries').update(entry.id, {
+            ended_at: new Date().toISOString()
+          });
+          this.running = null;
+          return;
+        } catch (_) {
+          // If the stop fails, treat it as still running.
+        }
+      }
+    }
+    this.running = entry ?? null;
   }
 
   private async subscribe() {
     if (this.unsubscribe) this.unsubscribe();
-    this.unsubscribe = await realtime.subscribe('time_entries', '*', () => {
-      this.loadRunning();
+    this.unsubscribe = await realtime.subscribe('time_entries', '*', async () => {
+      await this.loadRunning();
+      await this.pushTimerState(0);
     });
   }
 
@@ -117,9 +136,7 @@ class TimerState {
     // fire and re-sync, but the UI shouldn't wait for the round trip.
     this.running = created as unknown as TimeEntry;
     this.now = Date.now();
-    // Push initial state — daily base is 0 since we just started (any
-    // prior completed entries will be added when the caller reloads).
-    this.pushTimerState(0);
+    await this.pushTimerState(0);
     return created;
   }
 
@@ -137,7 +154,7 @@ class TimerState {
     // realtime subscription is slow/disconnected.
     if (this.running?.id === id) {
       this.running = null;
-      this.pushTimerState(0);
+      await this.pushTimerState(0);
     }
     try {
       await pb.collection('time_entries').update(id, {
