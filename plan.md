@@ -1114,3 +1114,37 @@ ran it on `:18090` against a throwaway named volume:
 - HTTPS is intentionally out of scope for LAN — README mentions
   the Caddy/Traefik/Cloudflare-Tunnel pattern if you ever expose
   this to the internet.
+
+## Phase 18 — Realtime connection liveness check + Offline badge
+
+### 18.1 Problem
+
+The realtime SSE connection can silently drop (browser stops retrying
+after ~2 minutes of failures, or a transient network blip takes down
+the EventSource). The existing `RealtimeManager` already checked every
+15 seconds and attempted a forced reconnect, but there was no **visual
+indicator** telling the user their data might be stale.
+
+### 18.2 Changes
+
+- **`realtime.svelte.ts`**: Reduced the check interval from 15s to 30s
+  (`CHECK_MS = 30_000`). Added an immediate `this.check()` call at the
+  end of `init()` so the connection state is accurate from the very
+  first render, rather than waiting for the first interval tick.
+- **`AppShell.svelte`**: Imported the `realtime` singleton and added a
+  connection status indicator in two places:
+  - **Desktop sidebar footer**: a small red dot next to the user email,
+    visible via `title="Realtime disconnected"` tooltip. Only renders
+    when `!realtime.connected`.
+  - **Mobile top bar**: a red dot + "Offline" label pushed to the right
+    side of the header. Only renders when `!realtime.connected`.
+
+Neither indicator shows when the connection is healthy — the badge is
+strictly an off-normality indicator.
+
+### 18.3 Tested (Playwright headless Chromium)
+
+Logged in at `http://127.0.0.1:8090/`, observed realtime logs confirming
+the immediate check fired and reconnected. No "Offline" badge visible
+after login (connection healthy). Verified via Playwright: 0 red dot
+indicators on the page.
