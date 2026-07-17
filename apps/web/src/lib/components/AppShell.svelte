@@ -2,6 +2,7 @@
   import { auth } from '$lib/auth.svelte';
   import { workspace } from '$lib/workspace.svelte';
   import { timer } from '$lib/timer.svelte';
+  import { realtime } from '$lib/realtime.svelte';
   import { formatHMS } from '@timebill/shared/money';
   import { page } from '$app/stores';
   import { sidebar } from '$lib/sidebar.svelte';
@@ -80,9 +81,14 @@
   {/if}
 
   <div class="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-    <span class="truncate text-xs text-slate-500" title={auth.user?.email ?? ''}>
-      {auth.user?.email}
-    </span>
+    <div class="flex items-center gap-2 truncate">
+      {#if !realtime.connected}
+        <span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="Realtime disconnected"></span>
+      {/if}
+      <span class="truncate text-xs text-slate-500" title={auth.user?.email ?? ''}>
+        {auth.user?.email}
+      </span>
+    </div>
     <button
       class="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-800"
       onclick={() => auth.logOut()}
@@ -147,6 +153,12 @@
           TimeBill
         {/if}
       </span>
+      {#if !realtime.connected}
+        <span class="ml-auto flex items-center gap-1 text-xs text-red-500" title="Realtime disconnected">
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-red-500"></span>
+          Offline
+        </span>
+      {/if}
     </header>
     {@render children()}
   </main>

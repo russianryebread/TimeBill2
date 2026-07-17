@@ -29,13 +29,16 @@ class RealtimeManager {
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private visibilityHandler: (() => void) | null = null;
 
-  private readonly CHECK_MS = 15_000;       // check connection every 15s
+  private readonly CHECK_MS = 30_000;       // check connection every 30s
   private readonly RECONNECT_COOLDOWN = 5_000; // don't reconnect more than once per 5s
   private lastReconnectAt = 0;
 
   // ---- lifecycle ---------------------------------------------------------
 
   async init() {
+    // Run an immediate check so the state is accurate from the start,
+    // rather than waiting for the first interval tick.
+    this.check();
     this.startChecks();
     this.listenVisibility();
   }
