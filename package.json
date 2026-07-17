@@ -1,6 +1,6 @@
 {
   "name": "timebill",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "Unified time tracking, expenses, invoicing, and tax estimation for hourly contractors",
   "workspaces": [
