@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { pb } from '$lib/pb';
   import { confirmAction } from '$lib/confirm.svelte';
+    import { tempDir } from '@tauri-apps/api/path';
 
   type Entry = {
     id: string;
@@ -177,10 +178,10 @@
       </div>
     {/if}
 
-    <div class="grid grid-cols-4 gap-2">
+    <div class="grid grid-cols-2 gap-2">
       <!-- Primary: hours-first input -->
       <label class="block">
-        <span class="text-xs text-slate-700">Decimal</span>
+        <span class="text-xs text-slate-700">Decimal Hours</span>
         <input
           inputmode="decimal"
           step="0.05"
@@ -189,34 +190,41 @@
           disabled={locked}
           bind:value={hoursInput}
           oninput={onHoursChange}
-          class="mt-0.5 w-18 rounded border border-slate-300 px-2 py-1 text-right font-mono text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
+          class="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-right font-mono text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
         />
       </label>
 
-      <div class="col-span-3 grid grid-cols-2 gap-2">
-        <!-- clock-time fine-tuning -->
-        <label class="block">
-          <span class="text-xs text-slate-700">Start</span>
-          <input
-            type="datetime-local"
-            required
-            disabled={locked}
-            bind:value={form.started_at}
-            class="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
-          />
-        </label>
-        <label class="block">
-          <span class="text-xs text-slate-700">End</span>
-          <input
-            type="datetime-local"
-            required
-            disabled={locked}
-            bind:value={form.ended_at}
-            class="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
-          />
-        </label>
+      <div class="flex items-center justify-end gap-2 text-xs text-slate-700">
+        <span>Billable</span>
+        <button type="button" disabled={locked}
+          onclick={() => form.billable = !form.billable}
+          class="inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 {form.billable ? 'bg-brand-500' : 'bg-slate-300'}">
+          <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform"
+            style="transform: translateX({form.billable ? '18px' : '2px'})"></span>
+        </button>
       </div>
     </div>
+
+    <label class="block">
+      <span class="text-xs text-slate-700">Start Date/Time</span>
+      <input
+        type="datetime-local"
+        required
+        disabled={locked}
+        bind:value={form.started_at}
+        class="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
+      />
+    </label>
+    <label class="block">
+      <span class="text-xs text-slate-700">End Date/Time</span>
+      <input
+        type="datetime-local"
+        required
+        disabled={locked}
+        bind:value={form.ended_at}
+        class="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
+      />
+    </label>
 
     <div class="grid grid-cols-2 gap-2 border-t border-slate-100">
       <label class="block">
@@ -252,16 +260,11 @@
 
     <label class="block">
       <span class="text-xs font-medium text-slate-700">Description</span>
-      <input
+      <textarea
         disabled={locked}
         bind:value={form.description}
         class="mt-0.5 w-full rounded border border-slate-300 px-2 py-1.5 text-xs focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
-      />
-    </label>
-
-    <label class="flex items-center gap-1.5 text-xs">
-      <input type="checkbox" disabled={locked} bind:checked={form.billable} />
-      Billable
+        rows={4}></textarea>
     </label>
 
     {#if error}
