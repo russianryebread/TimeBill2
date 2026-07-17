@@ -1148,3 +1148,47 @@ Logged in at `http://127.0.0.1:8090/`, observed realtime logs confirming
 the immediate check fired and reconnected. No "Offline" badge visible
 after login (connection healthy). Verified via Playwright: 0 red dot
 indicators on the page.
+
+## Phase 19 — Time entry editor: full edit/delete modal in TimeTracker
+
+### 19.1 Problem
+
+`TimeTracker.svelte` only had inline hours/minutes editing — no way to
+edit project, task, description, start/end clock times, or delete entries.
+A complete `TimeEntryEditor.svelte` modal component existed in the repo
+but was dead code (zero imports).
+
+### 19.2 Changes
+
+- **`TimeTracker.svelte`** (only file changed):
+  - Imported `TimeEntryEditor` from `./TimeEntryEditor.svelte`
+  - Added `editingId = $state<string | null>(null)` — tracks which entry's
+    modal is open
+  - Added `tasks` loading alongside the existing `projects` load in
+    `loadMeta()` (formerly `loadProjects()`), so the editor's Activity
+    dropdown is populated
+  - Added `billable: boolean` to the local `Entry` type
+  - Added a **pencil icon button** (`ph--pencil-simple-line-duotone`) on
+    each entry row, between the h/m inputs and the play/pause toggle.
+    Disabled for invoice-locked entries.
+  - Renders `<TimeEntryEditor>` at the end of the template when
+    `editingId` is set. On close, clears `editingId`; on save, clears
+    `editingId` and calls `load()` to refresh the entry list.
+  - Added `min-h-[12rem]` to the day-list container so the project
+    picker popover (which opens upward from the +New button) isn't
+    cut off when the entry list is empty.
+
+### 19.3 No changes to TimeEntryEditor
+
+The existing component already supports:
+- Edit project, task (activity), description, billable flag
+- Edit total duration (decimal hours, synced with clock times)
+- Edit start/end clock times (under an "Adjust clock times" disclosure)
+- Delete with confirmation dialog (`confirmAction`)
+- Invoice-locked entries show as read-only with a lock badge + link
+
+### 19.4 Quick-test via Playwright
+
+Build succeeded (0 new errors). Bundled JS confirms all editor strings
+are compiled in: "Edit time entry", "Adjust clock times", "Delete this
+time entry", "Save changes", and the pencil icon class.
