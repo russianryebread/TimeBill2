@@ -3459,7 +3459,7 @@ dependencies = [
 
 [[package]]
 name = "timebill"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "objc2",
  "objc2-app-kit",

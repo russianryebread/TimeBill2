@@ -7,6 +7,7 @@
   import { timer } from '$lib/timer.svelte';
   import { api } from '$lib/api';
   import { formatHours } from '@timebill/shared/money';
+  import TimeEntryEditor from './TimeEntryEditor.svelte';
 
   let { isMenubar = false }: { isMenubar?: boolean } = $props();
 
@@ -17,6 +18,7 @@
     started_at: string;
     ended_at: string | null;
     description: string;
+    billable: boolean;
     invoice: string;
     expand?: {
       project?: { id: string; name: string; color: string; client: string; expand?: { client?: { name: string } } };
@@ -28,6 +30,7 @@
   let weekOffset = $state(0);
   let selectedDay = $state(new Date());
   let loading = $state(true);
+  let editingId = $state<string | null>(null);
 
   function startOfWeek(d: Date): Date {
     const day = d.getDay();
@@ -238,7 +241,9 @@
     client: string;
     expand?: { client?: { id: string; name: string } };
   };
+  type TaskOption = { id: string; name: string };
   let projects = $state<ProjectOption[]>([]);
+  let tasks = $state<TaskOption[]>([]);
   let projectsLoaded = $state(false);
   let pickerOpen = $state(false);
   let pickerQuery = $state('');
@@ -246,10 +251,11 @@
   let pickerInputEl: HTMLInputElement | null = null;
   let lastUsedProjectId = $state<string | null>(null);
 
-  async function loadProjects() {
+  async function loadMeta() {
     if (!workspace.current || projectsLoaded) return;
     try {
       projects = (await api.listProjects({ status: 'active' })) as unknown as ProjectOption[];
+      tasks = (await api.listTasks()) as unknown as TaskOption[];
       projectsLoaded = true;
     } catch (_) {}
   }
@@ -295,7 +301,7 @@
   let pickerFlat = $derived(projectGroups.flatMap((g) => g.projects));
 
   async function openPicker() {
-    await loadProjects();
+    await loadMeta();
     await refreshLastUsedProject();
     pickerQuery = '';
     pickerHighlightId = lastUsedProjectId &&
@@ -488,7 +494,7 @@
   </div>
 
   <!-- Day list -->
-  <div class="menubar-scroll flex-1 overflow-auto">
+  <div class="menubar-scroll flex-1 overflow-auto min-h-[12rem]">
     {#if loading}
       <div class="p-8 text-center text-xs text-slate-500">Loading…</div>
     {:else if entriesForSelectedDay.length === 0}
@@ -537,6 +543,14 @@
                 aria-label="Minutes" />
               <span class="text-slate-400">m</span>
             </div>
+
+            <button type="button"
+              onclick={() => (editingId = e.id)}
+              class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:text-brand-700 disabled:opacity-30"
+              aria-label="Edit entry" title="Edit entry"
+              disabled={isLocked}>
+              <span class="icon-[ph--pencil-simple-line-duotone]" aria-hidden="true"></span>
+            </button>
 
             <button type="button"
               disabled={isLocked || (!isRunning && !!timer.running)}
@@ -614,6 +628,22 @@
       </div>
     {/if}
   </footer>
+
+  {#if editingId}
+    {@const entry = entriesForSelectedDay.find((e) => e.id === editingId)}
+    {#if entry}
+      <TimeEntryEditor
+        {entry}
+        {projects}
+        {tasks}
+        onClose={() => (editingId = null)}
+        onSaved={() => {
+          editingId = null;
+          load();
+        }}
+      />
+    {/if}
+  {/if}
 
   {#if settingsOpen}
     <div class="fixed inset-0 z-50 flex flex-col bg-white">
